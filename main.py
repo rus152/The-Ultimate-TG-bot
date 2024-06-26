@@ -1,4 +1,7 @@
 import telebot
+import whisper
+import psutil
+import warnings
 import os
 import speech_recognition as sr
 from pydub import AudioSegment
@@ -34,17 +37,16 @@ def recognize_speech_from_audio(file_path, languages=["ru-RU", "en-US"]):
     wav_path = convert_audio_to_wav(file_path)
 
     try:
-        # Открываем аудио файл с помощью SpeechRecognition
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)  # Используем метод record у recognizer
-            try:
-                # Используем Google Web Speech API для распознавания речи
-                text = recognizer.recognize_google(audio_data, language=",".join(languages))
-                return text
-            except sr.UnknownValueError:
-                return "Google Web Speech API не смогла распознать аудио"
-            except sr.RequestError as e:
-                return f"Could not request results from Google Web Speech API; {e}"
+        # Подавляем предупреждения
+        warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+
+        # Загружаем модель Whisper
+        model = whisper.load_model("small")
+
+        # Распознаем речь с помощью Whisper
+        result = model.transcribe(file_path)
+
+        return result["text"]
     finally:
         # Удаляем временный WAV файл
         os.remove(wav_path)
@@ -98,6 +100,18 @@ def handle_voice(message):
 def handle_video_note(message):
     handle_audio_message(message, 'mp4', 'video_notes')
 
+@bot.message_handler(commands=['ping'])
+def handle_video_note(message):
+    # Получение текущей нагрузки на CPU и ОЗУ
+    cpu_usage = psutil.cpu_percent(interval=1)
+    memory_info = psutil.virtual_memory()
+
+    # Сохранение данных в переменные для вывода
+    cpu_load = f"Current CPU Load: {cpu_usage}%"
+    memory_load = f"Current Memory Usage: {memory_info.percent}%"
+
+    bot.reply_to(message, f'Я всё ещё живой!\n\n{cpu_load}\n\n{memory_load}')
+
 @bot.message_handler(commands=['everyone'])
 def ping_all(message):
     chat_id = message.chat.id
@@ -136,3 +150,8 @@ def ping_all(message):
         bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
 
 bot.polling()
+
+
+
+
+
