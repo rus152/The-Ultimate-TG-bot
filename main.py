@@ -12,7 +12,7 @@ from threading import Thread
 with open('token.txt') as f:
     API_TOKEN = f.read().strip()
 
-bot = telebot.TeleBot(API_TOKEN, parse_mode='MARKDOWN')
+
 processing_queue = Queue()
 
 # Создание папок для сохранения файлов, если они не существуют
@@ -90,66 +90,76 @@ def handle_audio_message(message, file_extension, folder):
 
     processing_queue.put((message.chat.id, status_message.message_id, file_name))
 
-
-@bot.message_handler(content_types=['voice'])
-def handle_voice(message):
-    handle_audio_message(message, 'ogg', 'voice_messages')
-
-
-@bot.message_handler(content_types=['video_note'])
-def handle_video_note(message):
-    handle_audio_message(message, 'mp4', 'video_notes')
-
-@bot.message_handler(commands=['ping'])
-def handle_video_note(message):
-    # Получение текущей нагрузки на CPU и ОЗУ
-    cpu_usage = psutil.cpu_percent(interval=1)
-    memory_info = psutil.virtual_memory()
-
-    # Сохранение данных в переменные для вывода
-    cpu_load = f"Current CPU Load: {cpu_usage}%"
-    memory_load = f"Current Memory Usage: {memory_info.percent}%"
-
-    bot.reply_to(message, f'Я всё ещё живой!\n\n{cpu_load}\n\n{memory_load}')
-
-@bot.message_handler(commands=['everyone'])
-def ping_all(message):
-    chat_id = message.chat.id
-    all_members = []
-
+while True:
     try:
-        # Получаем информацию о чате
-        chat = bot.get_chat(chat_id)
+        bot = telebot.TeleBot(API_TOKEN, parse_mode='MARKDOWN')
 
-        # Проверяем, является ли бот администратором
-        is_bot_admin = any(admin.user.id == bot.get_me().id for admin in bot.get_chat_administrators(chat_id))
-        if not is_bot_admin:
-            bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать всех участников.")
-            return
 
-        # Получаем всех администраторов чата
-        administrators = bot.get_chat_administrators(chat_id)
+        @bot.message_handler(content_types=['voice'])
+        def handle_voice(message):
+            handle_audio_message(message, 'ogg', 'voice_messages')
 
-        # Формируем упоминания администраторов
-        for admin in administrators:
-            user = admin.user
-            if user.username:
-                mention = f'@{user.username}'
-            else:
-                mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
-            all_members.append(mention)
 
-        # Отправляем сообщение, если есть упоминания
-        ping_message = ' '.join(all_members)
+        @bot.message_handler(content_types=['video_note'])
+        def handle_video_note(message):
+            handle_audio_message(message, 'mp4', 'video_notes')
 
-        if ping_message:
-            bot.send_message(chat_id, ping_message, parse_mode='HTML')
-        else:
-            bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
-    except Exception as e:
-        bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
 
-bot.polling()
+        @bot.message_handler(commands=['ping'])
+        def handle_video_note(message):
+            # Получение текущей нагрузки на CPU и ОЗУ
+            cpu_usage = psutil.cpu_percent(interval=1)
+            memory_info = psutil.virtual_memory()
+
+            # Сохранение данных в переменные для вывода
+            cpu_load = f"Current CPU Load: {cpu_usage}%"
+            memory_load = f"Current Memory Usage: {memory_info.percent}%"
+
+            bot.reply_to(message, f'Я всё ещё живой!\n\n{cpu_load}\n\n{memory_load}')
+
+
+        @bot.message_handler(commands=['everyone'])
+        def ping_all(message):
+            chat_id = message.chat.id
+            all_members = []
+
+            try:
+                # Получаем информацию о чате
+                chat = bot.get_chat(chat_id)
+
+                # Проверяем, является ли бот администратором
+                is_bot_admin = any(admin.user.id == bot.get_me().id for admin in bot.get_chat_administrators(chat_id))
+                if not is_bot_admin:
+                    bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать всех участников.")
+                    return
+
+                # Получаем всех администраторов чата
+                administrators = bot.get_chat_administrators(chat_id)
+
+                # Формируем упоминания администраторов
+                for admin in administrators:
+                    user = admin.user
+                    if user.username:
+                        mention = f'@{user.username}'
+                    else:
+                        mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+                    all_members.append(mention)
+
+                # Отправляем сообщение, если есть упоминания
+                ping_message = ' '.join(all_members)
+
+                if ping_message:
+                    bot.send_message(chat_id, ping_message, parse_mode='HTML')
+                else:
+                    bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
+            except Exception as e:
+                bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
+
+
+        bot.polling()
+    except:
+        print("Ошибка перезапуск")
+
 
 
 
