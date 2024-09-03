@@ -1,8 +1,8 @@
 SpeechRecognition
 pydub
 PyTelegramBotAPI
-openai-whisper
-numpy
 ffmpeg-python
 python-dotenv
 psutil
+openai-whisper
+numpy<2
