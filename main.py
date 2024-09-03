@@ -7,10 +7,11 @@ import speech_recognition as sr
 from pydub import AudioSegment
 from queue import Queue
 from threading import Thread
+from dotenv import load_dotenv
 
-# Чтение токена из файла
-with open('token.txt') as f:
-    API_TOKEN = f.read().strip()
+# Чтение токена из .env
+load_dotenv()
+API_TOKEN = os.getenv('TOKEN')
 
 
 processing_queue = Queue()
@@ -159,9 +160,3 @@ while True:
         bot.polling()
     except:
         print("Ошибка перезапуск")
-
-
-
-
-
-
