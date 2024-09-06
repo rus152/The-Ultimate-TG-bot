@@ -7,11 +7,11 @@ from threading import Thread
 
 class ChatManager:
     def __init__(self):
-        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Инициализируем пустой массив для хранения чатов')
+        logger.info('Инициализируем пустой массив для хранения чатов')
         self.chat_data = []
 
     def add_chat(self, chat, message, path):
-        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Добавляем новый элемент в массив')
+        logger.info('Добавляем новый элемент в массив')
         self.chat_data.append({
             "chat_id": chat,
             "message_id": message,
@@ -20,12 +20,12 @@ class ChatManager:
         return f"Добавлено: {chat}, {message}, {path}"
 
     def remove_chat(self, chat):
-        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Удаляем элемент по имени чата')
+        logger.info('Удаляем элемент по имени чата')
         self.chat_data = [item for item in self.chat_data if item["chat_id"] != chat]
         return f"Удалено все сообщения из чата: {chat}"
 
     def display_chats(self):
-        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Вывод всех данных в массиве')
+        logger.info(' Вывод всех данных в массиве')
         if not self.chat_data:
             return "Чаты отсутствуют"
         else:
@@ -41,17 +41,40 @@ class ChatManager:
             return "Массив пуст"
 
     def count_chats(self):
-        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Вывод количества чатов')
+        logger.info('Вывод количества чатов')
         return f"Количество чатов: {len(self.chat_data)}"
+
+def setup_logging(filename: str) -> None:
+    """
+    Настраивает логирование.
+
+    :param filename: Имя файла для записи логов
+    :return: None
+    """
+    global logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)  # Устанавливаем уровень логирования
+
+    # Формат сообщения лога теперь включает идентификатор потока
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    # Обработчик для записи логов в файл
+    file_handler = logging.FileHandler(filename, 'a')
+    file_handler.setFormatter(formatter)
+
+    # Обработчик для вывода логов в консоль
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    # Добавляем обработчики к логгеру
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 def init():
     global VOICE_FOLDER
     global VIDEO_NOTE
     global API_TOKEN
-    global logger
     global chat_manager
-
-    logger = logging.getLogger(__name__)
 
     logging.basicConfig(filename='myapp.log', level=logging.INFO)
     logger.info(f'{datetime.now().strftime("%H:%M:%S")} Начало логирования')
@@ -98,5 +121,6 @@ def main():
 
 
 if __name__ == "__main__":
+    setup_logging('UTGB.log')
     init()
     main()
