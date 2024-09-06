@@ -2,8 +2,9 @@ import telebot
 import os
 from dotenv import load_dotenv
 import logging
-from datetime import datetime
-from threading import Thread
+
+from test2 import chat_manager
+
 
 class ChatManager:
     def __init__(self):
@@ -33,7 +34,7 @@ class ChatManager:
                 return f"Чат: {item['chat_id']}, Сообщение: {item['message_id']}, Путь: {item['path']}"
 
     def get_first_chat(self):
-        logging.info(f'Вывод первого чата в массиве')
+        logging.info('Вывод первого чата в массиве')
         if self.chat_data:
             first_chat = self.chat_data[0]
             return f"Первый чат: {first_chat['chat_id']}, Сообщение: {first_chat['message_id']}, Путь: {first_chat['path']}"
@@ -94,13 +95,44 @@ def init():
         logging.info('Папка для голосовых сообщений создана')
     logging.info('Инициализация закончена')
 
+def queue():
+    pass
+
+def Voice_Handler():
+    while True:
+        pass
+
+
 def main():
     logging.info('Запуск бота')
     bot = telebot.TeleBot(API_TOKEN)
 
     @bot.message_handler(content_types=['voice'])
     def handle_voice(message):
-        logging.info('Получено голосовое сообщение')
+
+        logging.info("Получаем файл голосового сообщения")
+
+        file_info = bot.get_file(message.voice.file_id)
+
+        logging.info("Загружаем голосовое сообщение")
+
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        logging.info("Определяем имя файла для сохранения")
+
+        file_name = f"{VOICE_FOLDER}/voice_{message.from_user.id}_{message.message_id}.ogg"
+
+        logging.info('Сохраняем файл на диск')
+
+        with open(file_name, 'wb') as voice_file:
+            voice_file.write(downloaded_file)
+
+        message_id = bot.reply_to(message, 'Распознавание')
+
+        chat_manager.add_chat(message.chat.id, message_id.id, file_name)
+
+    @bot.message_handler(content_types=['video_note'])
+    def handle_video_note(message):
         pass
 
     @bot.message_handler(commands=['add'])
@@ -109,7 +141,7 @@ def main():
 
     @bot.message_handler(commands=['check'])
     def check_massive(message):
-        chat_manager.display_chats()
+        print(chat_manager.display_chats())
         bot.reply_to(message, chat_manager.display_chats())
 
 
