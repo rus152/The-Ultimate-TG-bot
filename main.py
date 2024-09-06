@@ -110,6 +110,7 @@ def init():
     global VIDEO_NOTE
     global API_TOKEN
     global chat_manager
+    global wait_number
 
 
     logging.info('Начало логирования')
@@ -125,10 +126,10 @@ def init():
 
     if not os.path.exists(VOICE_FOLDER):
         os.makedirs(VOICE_FOLDER)
-        logging.info('Папка для видео сообщений создана')
+        logging.info('Папка для голосовых сообщений создана')
     if not os.path.exists(VIDEO_NOTE):
         os.makedirs(VIDEO_NOTE)
-        logging.info('Папка для голосовых сообщений создана')
+        logging.info('Папка для видео сообщений создана')
 
     thr1 = Thread(target=Voice_Handler, daemon=True)
     thr2 = Thread(target=queue, daemon=True)
@@ -140,19 +141,29 @@ def init():
 
 
 def queue():
+    wait_number = 0
     while True:
-        for i in range(int(chat_manager.count_chats())):
-            if i > 0:
-                try:
-                    bot.edit_message_text(
-                        chat_id=chat_manager.i_chat_id(i),
-                        message_id=chat_manager.i_message_id(i),
-                        text=f"Перед вами в очереди на обработку: {i}",
-                    )
-                except telebot.apihelper.ApiTelegramException as e:
+        number_of_queue = int(chat_manager.count_chats())
+        if wait_number != number_of_queue:
+            for i in range(int(chat_manager.count_chats())):
+                if i > 0:
+                    try:
+                        bot.edit_message_text(
+                            chat_id=chat_manager.i_chat_id(i),
+                            message_id=chat_manager.i_message_id(i),
+                            text=f"Перед вами в очереди на обработку: {i}",
+                        )
+                        logging.warning('Изменено сообщение об очереди')
+                    except telebot.apihelper.ApiTelegramException as e:
+                        pass
+                else:
                     pass
-            else:
-                time.sleep(1)
+            wait_number = number_of_queue
+            logging.info("Ожидаемое число изменено на " + str(wait_number))
+        elif wait_number == int(chat_manager.count_chats()) and wait_number == 0:
+            pass
+        time.sleep(1)
+
 
 
 
@@ -164,8 +175,8 @@ def Voice_Handler():
             logging.info('Запуск расшифровки')
             bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
                                   text=f"Распознавание...", parse_mode='HTML')
-            # Load the model
-            model = whisper.load_model("large")
+
+            model = whisper.load_model("small")
 
             # Open and read the audio file correctly
             audio_file = chat_manager.first_path()
@@ -178,6 +189,8 @@ def Voice_Handler():
 
             bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
                                   text=f"Распознанный текст:\n\n<i>{result['text']}</i>", parse_mode='HTML')
+
+            os.remove(chat_manager.first_path())
 
             chat_manager.remove_chat()
 
