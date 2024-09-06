@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import logging
 import whisper
 from threading import Thread
+import time
 
 class ChatManager:
     def __init__(self):
@@ -41,8 +42,7 @@ class ChatManager:
             return "Массив пуст"
 
     def count_chats(self):
-        logging.info('Вывод количества чатов')
-        return f"Количество чатов: {len(self.chat_data)}"
+        return f"{len(self.chat_data)}"
 
     def first_path(self):
         logging.info('Запрос пути первого чата в массиве')
@@ -58,6 +58,21 @@ class ChatManager:
         logging.info('Запрос message_id первого чата в массиве')
         first_chat = self.chat_data[0]
         return f"{first_chat['message_id']}"
+
+    def i_chat_id(self, i):
+        try:
+            first_chat = self.chat_data[i]
+            return f"{first_chat['chat_id']}"
+        except IndexError:
+            pass
+
+
+    def i_message_id(self, i):
+        try:
+            first_chat = self.chat_data[i]
+            return f"{first_chat['message_id']}"
+        except IndexError:
+            pass
 
     def checker(self):
         if not self.chat_data:
@@ -115,13 +130,31 @@ def init():
         os.makedirs(VIDEO_NOTE)
         logging.info('Папка для голосовых сообщений создана')
 
-    Thread(target=Voice_Handler, daemon=True).start()
+    thr1 = Thread(target=Voice_Handler, daemon=True)
+    thr2 = Thread(target=queue, daemon=True)
+
+    thr1.start()
+    thr2.start()
 
     logging.info('Инициализация закончена')
 
 
 def queue():
-    pass
+    while True:
+        for i in range(int(chat_manager.count_chats())):
+            if i > 0:
+                try:
+                    bot.edit_message_text(
+                        chat_id=chat_manager.i_chat_id(i),
+                        message_id=chat_manager.i_message_id(i),
+                        text=f"Перед вами в очереди на обработку: {i}",
+                    )
+                except telebot.apihelper.ApiTelegramException as e:
+                    pass
+            else:
+                time.sleep(1)
+
+
 
 def Voice_Handler():
     while True:
@@ -129,8 +162,10 @@ def Voice_Handler():
             pass
         if chat_manager.checker() == "Не пусто":
             logging.info('Запуск расшифровки')
+            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
+                                  text=f"Распознавание...", parse_mode='HTML')
             # Load the model
-            model = whisper.load_model("small")
+            model = whisper.load_model("large")
 
             # Open and read the audio file correctly
             audio_file = chat_manager.first_path()
@@ -157,21 +192,13 @@ def main():
     @bot.message_handler(content_types=['voice'])
     def handle_voice(message):
 
-        message_id = bot.reply_to(message, 'Распознавание')
-
-        logging.info("Получаем файл голосового сообщения")
+        message_id = bot.reply_to(message, 'Обработка...')
 
         file_info = bot.get_file(message.voice.file_id)
 
-        logging.info("Загружаем голосовое сообщение")
-
         downloaded_file = bot.download_file(file_info.file_path)
 
-        logging.info("Определяем имя файла для сохранения")
-
         file_name = f"{VOICE_FOLDER}/voice_{message.from_user.id}_{message.message_id}.ogg"
-
-        logging.info('Сохраняем файл на диск')
 
         with open(file_name, 'wb') as voice_file:
             voice_file.write(downloaded_file)
@@ -181,10 +208,6 @@ def main():
     @bot.message_handler(content_types=['video_note'])
     def handle_video_note(message):
         pass
-
-    @bot.message_handler(commands=['add'])
-    def data_to_massive(message):
-        bot.reply_to(message, chat_manager.add_chat(message.chat.id, "empty", "test"))
 
     @bot.message_handler(commands=['check'])
     def check_massive(message):
