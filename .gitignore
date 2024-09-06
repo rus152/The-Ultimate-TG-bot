@@ -350,3 +350,7 @@ $RECYCLE.BIN/
 .env
 voice_notes/
 voice_messages/
+/test1.py
+/test2.py
+/old.py
+/test3.py

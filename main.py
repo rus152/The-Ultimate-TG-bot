@@ -1,162 +1,102 @@
 import telebot
-import whisper
-import psutil
-import warnings
 import os
-import speech_recognition as sr
-from pydub import AudioSegment
-from queue import Queue
-from threading import Thread
 from dotenv import load_dotenv
+import logging
+from datetime import datetime
+from threading import Thread
 
-# Чтение токена из .env
-load_dotenv()
-API_TOKEN = os.getenv('TOKEN')
+class ChatManager:
+    def __init__(self):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Инициализируем пустой массив для хранения чатов')
+        self.chat_data = []
 
+    def add_chat(self, chat, message, path):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Добавляем новый элемент в массив')
+        self.chat_data.append({
+            "chat_id": chat,
+            "message_id": message,
+            "path": path
+        })
+        return f"Добавлено: {chat}, {message}, {path}"
 
-processing_queue = Queue()
+    def remove_chat(self, chat):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Удаляем элемент по имени чата')
+        self.chat_data = [item for item in self.chat_data if item["chat_id"] != chat]
+        return f"Удалено все сообщения из чата: {chat}"
 
-# Создание папок для сохранения файлов, если они не существуют
-if not os.path.exists('voice_messages'):
-    os.makedirs('voice_messages')
+    def display_chats(self):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Вывод всех данных в массиве')
+        if not self.chat_data:
+            return "Чаты отсутствуют"
+        else:
+            for item in self.chat_data:
+                return f"Чат: {item['chat_id']}, Сообщение: {item['message_id']}, Путь: {item['path']}"
 
-if not os.path.exists('video_notes'):
-    os.makedirs('video_notes')
+    def get_first_chat(self):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Вывод первого чата в массиве')
+        if self.chat_data:
+            first_chat = self.chat_data[0]
+            return f"Первый чат: {first_chat['chat_id']}, Сообщение: {first_chat['message_id']}, Путь: {first_chat['path']}"
+        else:
+            return "Массив пуст"
 
+    def count_chats(self):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Вывод количества чатов')
+        return f"Количество чатов: {len(self.chat_data)}"
 
-def convert_audio_to_wav(file_path):
-    audio = AudioSegment.from_file(file_path)
-    wav_path = file_path.rsplit('.', 1)[0] + '.wav'
-    audio.export(wav_path, format="wav")
-    return wav_path
+def init():
+    global VOICE_FOLDER
+    global VIDEO_NOTE
+    global API_TOKEN
+    global logger
+    global chat_manager
 
+    logger = logging.getLogger(__name__)
 
-def recognize_speech_from_audio(file_path, languages=["ru-RU", "en-US"]):
-    recognizer = sr.Recognizer()
+    logging.basicConfig(filename='myapp.log', level=logging.INFO)
+    logger.info(f'{datetime.now().strftime("%H:%M:%S")} Начало логирования')
 
-    # Конвертируем аудио файл в формат WAV
-    wav_path = convert_audio_to_wav(file_path)
+    chat_manager = ChatManager()
 
-    try:
-        # Подавляем предупреждения
-        warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+    load_dotenv()
+    API_TOKEN = os.getenv('TOKEN')
+    logger.info(f'{datetime.now().strftime("%H:%M:%S")} Токен получен')
 
-        # Загружаем модель Whisper
-        model = whisper.load_model("small")
+    VOICE_FOLDER = 'voice_messages'
+    VIDEO_NOTE = 'video_notes'
 
-        # Распознаем речь с помощью Whisper
-        result = model.transcribe(file_path)
+    if not os.path.exists(VOICE_FOLDER):
+        os.makedirs(VOICE_FOLDER)
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Папка для видео сообщений создана')
+    if not os.path.exists(VIDEO_NOTE):
+        os.makedirs(VIDEO_NOTE)
+        logger.info('Папка для голосовых сообщений создана')
+    logger.info(f'{datetime.now().strftime("%H:%M:%S")} Инициализация закончена')
 
-        return result["text"]
-    finally:
-        # Удаляем временный WAV файл
-        os.remove(wav_path)
+def main():
+    logger.info(f'{datetime.now().strftime("%H:%M:%S")} Запуск бота')
+    bot = telebot.TeleBot(API_TOKEN)
 
+    @bot.message_handler(content_types=['voice'])
+    def handle_voice(message):
+        logger.info(f'{datetime.now().strftime("%H:%M:%S")} Получено голосовое сообщение')
+        pass
 
-def process_queue():
-    while True:
-        chat_id, message_id, file_name = processing_queue.get()
+    @bot.message_handler(commands=['add'])
+    def data_to_massive(message):
+        bot.reply_to(message, chat_manager.add_chat(message.chat.id, "empty", "test"))
 
-        # Распознавание речи
-        recognized_text = recognize_speech_from_audio(file_name)
-
-        # Обновление сообщения
-        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f'Распознанный текст:\n\n<i>{recognized_text}</i>', parse_mode='HTML')
-
-        # Удаление оригинального файла
-        os.remove(file_name)
-
-        processing_queue.task_done()
-
-
-Thread(target=process_queue, daemon=True).start()
-
-
-def handle_audio_message(message, file_extension, folder):
-    # Скачивание файла
-    file_info = bot.get_file(message.voice.file_id if file_extension == 'ogg' else message.video_note.file_id)
-    downloaded_file = bot.download_file(file_info.file_path)
-
-    # Сохранение файла
-    file_name = f"{folder}/{message.voice.file_id if file_extension == 'ogg' else message.video_note.file_id}.{file_extension}"
-    with open(file_name, 'wb') as new_file:
-        new_file.write(downloaded_file)
-
-    queue_position = processing_queue.qsize()
-
-    if queue_position == 0:
-        status_message = bot.reply_to(message, "Распознавание")
-    else:
-        status_message = bot.reply_to(message, f"Очередь ({queue_position + 1})")
-
-    processing_queue.put((message.chat.id, status_message.message_id, file_name))
-
-while True:
-    try:
-        bot = telebot.TeleBot(API_TOKEN, parse_mode='MARKDOWN')
-
-
-        @bot.message_handler(content_types=['voice'])
-        def handle_voice(message):
-            handle_audio_message(message, 'ogg', 'voice_messages')
+    @bot.message_handler(commands=['check'])
+    def check_massive(message):
+        chat_manager.display_chats()
+        bot.reply_to(message, chat_manager.display_chats())
 
 
-        @bot.message_handler(content_types=['video_note'])
-        def handle_video_note(message):
-            handle_audio_message(message, 'mp4', 'video_notes')
+
+    bot.polling()
 
 
-        @bot.message_handler(commands=['ping'])
-        def handle_video_note(message):
-            # Получение текущей нагрузки на CPU и ОЗУ
-            cpu_usage = psutil.cpu_percent(interval=1)
-            memory_info = psutil.virtual_memory()
 
-            # Сохранение данных в переменные для вывода
-            cpu_load = f"Current CPU Load: {cpu_usage}%"
-            memory_load = f"Current Memory Usage: {memory_info.percent}%"
-
-            bot.reply_to(message, f'Я всё ещё живой!\n\n{cpu_load}\n\n{memory_load}')
-
-
-        @bot.message_handler(commands=['everyone'])
-        def ping_all(message):
-            chat_id = message.chat.id
-            all_members = []
-
-            try:
-                # Получаем информацию о чате
-                chat = bot.get_chat(chat_id)
-
-                # Проверяем, является ли бот администратором
-                is_bot_admin = any(admin.user.id == bot.get_me().id for admin in bot.get_chat_administrators(chat_id))
-                if not is_bot_admin:
-                    bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать всех участников.")
-                    return
-
-                # Получаем всех администраторов чата
-                administrators = bot.get_chat_administrators(chat_id)
-
-                # Формируем упоминания администраторов
-                for admin in administrators:
-                    user = admin.user
-                    if user.username:
-                        mention = f'@{user.username}'
-                    else:
-                        mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
-                    all_members.append(mention)
-
-                # Отправляем сообщение, если есть упоминания
-                ping_message = ' '.join(all_members)
-
-                if ping_message:
-                    bot.send_message(chat_id, ping_message, parse_mode='HTML')
-                else:
-                    bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
-            except Exception as e:
-                bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
-
-
-        bot.polling()
-    except:
-        print("Ошибка перезапуск")
+if __name__ == "__main__":
+    init()
+    main()
