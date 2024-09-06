@@ -2,9 +2,8 @@ import telebot
 import os
 from dotenv import load_dotenv
 import logging
-
-from test2 import chat_manager
-
+import whisper
+from threading import Thread
 
 class ChatManager:
     def __init__(self):
@@ -20,10 +19,10 @@ class ChatManager:
         })
         return f"Добавлено: {chat}, {message}, {path}"
 
-    def remove_chat(self, chat):
-        logging.info('Удаляем элемент по имени чата')
-        self.chat_data = [item for item in self.chat_data if item["chat_id"] != chat]
-        return f"Удалено все сообщения из чата: {chat}"
+    def remove_chat(self):
+        logging.info('Удаляем первую строку')
+        removed_chat = self.chat_data.pop(0)
+        return
 
     def display_chats(self):
         logging.info('Вывод всех данных в массиве')
@@ -44,6 +43,27 @@ class ChatManager:
     def count_chats(self):
         logging.info('Вывод количества чатов')
         return f"Количество чатов: {len(self.chat_data)}"
+
+    def first_path(self):
+        logging.info('Запрос пути первого чата в массиве')
+        first_chat = self.chat_data[0]
+        return f"{first_chat['path']}"
+
+    def first_chat_id(self):
+        logging.info('Запрос chat_id первого чата в массиве')
+        first_chat = self.chat_data[0]
+        return f"{first_chat['chat_id']}"
+
+    def first_message_id(self):
+        logging.info('Запрос message_id первого чата в массиве')
+        first_chat = self.chat_data[0]
+        return f"{first_chat['message_id']}"
+
+    def checker(self):
+        if not self.chat_data:
+            return "Пусто"
+        else:
+            return "Не пусто"
 
 def setup_logging(filename: str) -> None:
     """
@@ -76,6 +96,7 @@ def init():
     global API_TOKEN
     global chat_manager
 
+
     logging.info('Начало логирования')
 
     chat_manager = ChatManager()
@@ -93,22 +114,50 @@ def init():
     if not os.path.exists(VIDEO_NOTE):
         os.makedirs(VIDEO_NOTE)
         logging.info('Папка для голосовых сообщений создана')
+
+    Thread(target=Voice_Handler, daemon=True).start()
+
     logging.info('Инициализация закончена')
+
 
 def queue():
     pass
 
 def Voice_Handler():
     while True:
-        pass
+        if chat_manager.checker() == "Пусто":
+            pass
+        if chat_manager.checker() == "Не пусто":
+            logging.info('Запуск расшифровки')
+            # Load the model
+            model = whisper.load_model("small")
+
+            # Open and read the audio file correctly
+            audio_file = chat_manager.first_path()
+
+            # Load audio using whisper's built-in function
+            audio = whisper.load_audio(audio_file)
+
+            # Transcribe the audio
+            result = model.transcribe(audio)
+
+            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
+                                  text=f"Распознанный текст:\n\n<i>{result['text']}</i>", parse_mode='HTML')
+
+            chat_manager.remove_chat()
+
+
 
 
 def main():
+    global bot
     logging.info('Запуск бота')
     bot = telebot.TeleBot(API_TOKEN)
 
     @bot.message_handler(content_types=['voice'])
     def handle_voice(message):
+
+        message_id = bot.reply_to(message, 'Распознавание')
 
         logging.info("Получаем файл голосового сообщения")
 
@@ -126,8 +175,6 @@ def main():
 
         with open(file_name, 'wb') as voice_file:
             voice_file.write(downloaded_file)
-
-        message_id = bot.reply_to(message, 'Распознавание')
 
         chat_manager.add_chat(message.chat.id, message_id.id, file_name)
 
