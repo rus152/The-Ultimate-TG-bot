@@ -5,6 +5,8 @@ import logging
 import whisper
 from threading import Thread
 import time
+from pydub import AudioSegment
+
 
 class ChatManager:
     def __init__(self):
@@ -176,7 +178,7 @@ def Voice_Handler():
             bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
                                   text=f"Распознавание...", parse_mode='HTML')
 
-            model = whisper.load_model("small")
+            model = whisper.load_model("medium")
 
             # Open and read the audio file correctly
             audio_file = chat_manager.first_path()
@@ -220,7 +222,27 @@ def main():
 
     @bot.message_handler(content_types=['video_note'])
     def handle_video_note(message):
-        pass
+
+        message_id = bot.reply_to(message, 'Обработка...')
+
+        file_info = bot.get_file(message.video_note.file_id)
+
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        file_name_video = f"{VIDEO_NOTE}/video_{message.from_user.id}_{message.message_id}.mp4"
+        file_name_audio = f"{VIDEO_NOTE}/video_{message.from_user.id}_{message.message_id}.ogg"
+
+        with open(file_name_video, 'wb') as video_file:
+            video_file.write(downloaded_file)
+
+        audio = AudioSegment.from_file(file_name_video, format="mp4")
+
+        audio.export(file_name_audio, format="ogg")
+
+        os.remove(file_name_video)
+
+        chat_manager.add_chat(message.chat.id, message_id.id, file_name_audio)
+
 
     @bot.message_handler(commands=['check'])
     def check_massive(message):
@@ -228,6 +250,42 @@ def main():
         bot.reply_to(message, chat_manager.display_chats())
 
 
+    @bot.message_handler(commands=['everyone'])
+    def ping_all(message):
+        chat_id = message.chat.id
+        all_members = []
+
+        try:
+            # Получаем информацию о чате
+            chat = bot.get_chat(chat_id)
+
+            # Проверяем, является ли бот администратором
+            is_bot_admin = any(admin.user.id == bot.get_me().id for admin in bot.get_chat_administrators(chat_id))
+            if not is_bot_admin:
+                bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать всех участников.")
+                return
+
+            # Получаем всех администраторов чата
+            administrators = bot.get_chat_administrators(chat_id)
+
+            # Формируем упоминания администраторов
+            for admin in administrators:
+                user = admin.user
+                if user.username:
+                    mention = f'@{user.username}'
+                else:
+                    mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+                all_members.append(mention)
+
+            # Отправляем сообщение, если есть упоминания
+            ping_message = ' '.join(all_members)
+
+            if ping_message:
+                bot.send_message(chat_id, ping_message, parse_mode='HTML')
+            else:
+                bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
+        except Exception as e:
+            bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
 
     bot.polling()
 
