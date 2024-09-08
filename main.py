@@ -6,6 +6,7 @@ import whisper
 from threading import Thread
 import time
 from pydub import AudioSegment
+import warnings
 
 
 class ChatManager:
@@ -177,6 +178,8 @@ def Voice_Handler():
             logging.info('Запуск расшифровки')
             bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
                                   text=f"Распознавание...", parse_mode='HTML')
+
+            warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 
             model = whisper.load_model("medium")
 
