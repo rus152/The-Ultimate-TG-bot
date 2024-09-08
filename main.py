@@ -2,7 +2,7 @@ import telebot
 import os
 from dotenv import load_dotenv
 import logging
-import whisper
+# import whisper
 from threading import Thread
 import time
 from pydub import AudioSegment
@@ -169,6 +169,9 @@ def queue():
         time.sleep(1)
 
 
+from faster_whisper import WhisperModel
+
+
 def Voice_Handler():
     while True:
         if chat_manager.checker() == "Пусто":
@@ -178,22 +181,31 @@ def Voice_Handler():
             bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
                                   text=f"Распознавание...", parse_mode='HTML')
 
-            model = whisper.load_model("medium")
+            # Загружаем модель с помощью faster-whisper
+            model = WhisperModel("large-v3", device="cpu", compute_type="int8")
 
-            # Open and read the audio file correctly
+            # Загружаем аудио
             audio_file = chat_manager.first_path()
 
-            # Load audio using whisper's built-in function
-            audio = whisper.load_audio(audio_file)
+            start_time = time.time()
 
-            # Transcribe the audio
-            result = model.transcribe(audio)
+            # Распознаём аудио
+            segments, info = model.transcribe(audio_file)
 
-            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
-                                  text=f"Распознанный текст:\n\n<i>{result['text']}</i>", parse_mode='HTML')
+            result_text = ""
+            for segment in segments:
+                result_text += segment.text
+
+            end_time = time.time()
+            duration = end_time - start_time
+
+            bot.edit_message_text(chat_id=chat_manager.first_chat_id(),
+                                  message_id=chat_manager.first_message_id(),
+                                  text=f"Распознанный текст:\n\n<i>{result_text}</i>\n\n"
+                                       f"Время распознавания: {duration:.2f} секунд",
+                                  parse_mode='HTML')
 
             os.remove(chat_manager.first_path())
-
             chat_manager.remove_chat()
 
 
