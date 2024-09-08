@@ -82,6 +82,7 @@ class ChatManager:
         else:
             return "Не пусто"
 
+
 def setup_logging(filename: str) -> None:
     """
     Настраивает логирование.
@@ -106,6 +107,7 @@ def setup_logging(filename: str) -> None:
     # Добавляем обработчики к логгеру
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
 
 def init():
     global VOICE_FOLDER
@@ -167,8 +169,6 @@ def queue():
         time.sleep(1)
 
 
-
-
 def Voice_Handler():
     while True:
         if chat_manager.checker() == "Пусто":
@@ -195,8 +195,6 @@ def Voice_Handler():
             os.remove(chat_manager.first_path())
 
             chat_manager.remove_chat()
-
-
 
 
 def main():
@@ -289,9 +287,7 @@ def main():
 
     bot.polling()
 
-
-
 if __name__ == "__main__":
-    setup_logging('UTGB.log')
+    setup_logging('bot.log')
     init()
     main()
