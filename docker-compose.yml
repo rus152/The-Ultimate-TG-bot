@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: UTGB
+    restart: unless-stopped  # Автоматически перезапускает контейнер, пока он явно не остановлен
+    command: ["./venv/bin/python", "main.py"]  # Запуск основного приложения
