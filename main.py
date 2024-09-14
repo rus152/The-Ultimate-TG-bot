@@ -127,6 +127,10 @@ class VoiceBot:
             chat_data = self.chat_manager.display_chats()
             self.bot.reply_to(message, chat_data)
 
+        @self.bot.message_handler(commands=['everyone'])
+        def ping_all(message):
+            self.process_ping_all(message)
+
     def process_voice_message(self, message):
         try:
             message_id = self.bot.reply_to(message, 'Обработка...')
@@ -265,6 +269,45 @@ class VoiceBot:
             except Exception as e:
                 logging.error(f'Error in queue manager: {e}')
                 time.sleep(1)
+
+    def process_ping_all(self, message):
+        chat_id = message.chat.id
+        all_members = []
+
+        try:
+            # Получаем информацию о чате
+            chat = self.bot.get_chat(chat_id)
+
+            # Проверяем, является ли бот администратором
+            bot_member = self.bot.get_chat_member(chat_id, self.bot.get_me().id)
+            if bot_member.status not in ['administrator', 'creator']:
+                self.bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать участников.")
+                return
+
+            # Получаем всех участников чата (может быть ограничено)
+            members = self.bot.get_chat_administrators(chat_id)
+
+            # Формируем упоминания участников
+            for member in members:
+                user = member.user
+                if user.is_bot:
+                    continue
+                if user.username:
+                    mention = f'@{user.username}'
+                else:
+                    mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+                all_members.append(mention)
+
+            # Отправляем сообщение, если есть упоминания
+            ping_message = ' '.join(all_members)
+
+            if ping_message:
+                self.bot.send_message(chat_id, ping_message, parse_mode='HTML')
+            else:
+                self.bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
+        except Exception as e:
+            logging.error(f'Error in ping_all: {e}')
+            self.bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
 
 
 if __name__ == "__main__":
