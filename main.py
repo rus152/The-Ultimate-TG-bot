@@ -147,24 +147,27 @@ def init():
 def queue():
     wait_number = 0
     while True:
-        number_of_queue = int(chat_manager.count_chats())
-        if wait_number != number_of_queue:
-            for i in range(int(chat_manager.count_chats())):
-                if i > 0:
-                    try:
-                        bot.edit_message_text(
-                            chat_id=chat_manager.i_chat_id(i),
-                            message_id=chat_manager.i_message_id(i),
-                            text=f"Перед вами в очереди на обработку: {i}",
-                        )
-                        logging.warning('Изменено сообщение об очереди')
-                    except telebot.apihelper.ApiTelegramException as e:
+        try:
+            number_of_queue = int(chat_manager.count_chats())
+            if wait_number != number_of_queue:
+                for i in range(int(chat_manager.count_chats())):
+                    if i > 0:
+                        try:
+                            bot.edit_message_text(
+                                chat_id=chat_manager.i_chat_id(i),
+                                message_id=chat_manager.i_message_id(i),
+                                text=f"Перед вами в очереди на обработку: {i}",
+                            )
+                            logging.warning('Изменено сообщение об очереди')
+                        except telebot.apihelper.ApiTelegramException as e:
+                            pass
+                    else:
                         pass
-                else:
-                    pass
-            wait_number = number_of_queue
-            logging.info("Ожидаемое число изменено на " + str(wait_number))
-        elif wait_number == int(chat_manager.count_chats()) and wait_number == 0:
+                wait_number = number_of_queue
+                logging.info("Ожидаемое число изменено на " + str(wait_number))
+            elif wait_number == int(chat_manager.count_chats()) and wait_number == 0:
+                pass
+        except:
             pass
         time.sleep(1)
 
@@ -174,39 +177,50 @@ from faster_whisper import WhisperModel
 
 def Voice_Handler():
     while True:
-        if chat_manager.checker() == "Пусто":
+        try:
+            if chat_manager.checker() == "Пусто":
+                pass
+            if chat_manager.checker() == "Не пусто":
+                logging.info('Запуск расшифровки')
+                bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
+                                      text=f"Распознавание...", parse_mode='HTML')
+
+                # Загружаем модель с помощью faster-whisper
+                model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+
+                # Загружаем аудио
+                audio_file = chat_manager.first_path()
+
+                start_time = time.time()
+
+                # Распознаём аудио
+                segments, info = model.transcribe(audio_file)
+
+                result_text = ""
+                for segment in segments:
+                    result_text += segment.text
+
+                end_time = time.time()
+                duration = end_time - start_time
+
+                try:
+                    bot.edit_message_text(chat_id=chat_manager.first_chat_id(),
+                                          message_id=chat_manager.first_message_id(),
+                                          text=f"Распознанный текст:\n\n<i>{result_text}</i>\n\n"
+                                               f"Время распознавания: {duration:.2f} секунд",
+                                          parse_mode='HTML')
+                except:
+                    bot.edit_message_text(chat_id=chat_manager.first_chat_id(),
+                                          message_id=chat_manager.first_message_id(),
+                                          text=f"Ошибка распознавания",
+                                          parse_mode='HTML')
+
+
+
+                os.remove(chat_manager.first_path())
+                chat_manager.remove_chat()
+        except:
             pass
-        if chat_manager.checker() == "Не пусто":
-            logging.info('Запуск расшифровки')
-            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
-                                  text=f"Распознавание...", parse_mode='HTML')
-
-            # Загружаем модель с помощью faster-whisper
-            model = WhisperModel("large-v3", device="cpu", compute_type="int8")
-
-            # Загружаем аудио
-            audio_file = chat_manager.first_path()
-
-            start_time = time.time()
-
-            # Распознаём аудио
-            segments, info = model.transcribe(audio_file)
-
-            result_text = ""
-            for segment in segments:
-                result_text += segment.text
-
-            end_time = time.time()
-            duration = end_time - start_time
-
-            bot.edit_message_text(chat_id=chat_manager.first_chat_id(),
-                                  message_id=chat_manager.first_message_id(),
-                                  text=f"Распознанный текст:\n\n<i>{result_text}</i>\n\n"
-                                       f"Время распознавания: {duration:.2f} секунд",
-                                  parse_mode='HTML')
-
-            os.remove(chat_manager.first_path())
-            chat_manager.remove_chat()
 
 
 def main():
