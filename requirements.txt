@@ -1,4 +1,4 @@
 pydub
 PyTelegramBotAPI
 python-dotenv
-faster-whisper
+openai-whisper

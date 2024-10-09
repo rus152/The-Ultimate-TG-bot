@@ -6,7 +6,7 @@ from threading import Thread
 import telebot
 from dotenv import load_dotenv
 from pydub import AudioSegment
-from faster_whisper import WhisperModel
+import whisper
 
 
 def setup_logging(filename: str) -> None:
@@ -76,7 +76,7 @@ class VoiceBot:
         # Загрузка модели с обработкой исключений
         try:
             logging.info('Loading model...')
-            self.model = WhisperModel("small", device="cpu", compute_type="int8")
+            self.model = whisper.load_model("large", device="cpu")
             logging.info('Model loaded')
         except Exception as e:
             logging.error(f'Error loading model: {e}')
@@ -133,7 +133,7 @@ class VoiceBot:
 
     def process_voice_message(self, message):
         try:
-            message_id = self.bot.reply_to(message, 'Обработка...')
+            sent_message = self.bot.reply_to(message, 'Обработка...')
             file_info = self.bot.get_file(message.voice.file_id)
             downloaded_file = self.bot.download_file(file_info.file_path)
 
@@ -143,13 +143,13 @@ class VoiceBot:
             with open(file_name, 'wb') as voice_file:
                 voice_file.write(downloaded_file)
 
-            self.chat_manager.add_chat(message.chat.id, message_id.id, file_name)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name)
         except Exception as e:
             logging.error(f'Error processing voice message: {e}')
 
     def process_video_note_message(self, message):
         try:
-            message_id = self.bot.reply_to(message, 'Обработка...')
+            sent_message = self.bot.reply_to(message, 'Обработка...')
             file_info = self.bot.get_file(message.video_note.file_id)
             downloaded_file = self.bot.download_file(file_info.file_path)
 
@@ -166,7 +166,7 @@ class VoiceBot:
 
             os.remove(file_name_video)
 
-            self.chat_manager.add_chat(message.chat.id, message_id.id, file_name_audio)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
         except Exception as e:
             logging.error(f'Error processing video note: {e}')
 
@@ -183,13 +183,13 @@ class VoiceBot:
                                                    text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
-                        segments, info = self.model.transcribe(path, language='ru')
-                        result_text = "".join([segment.text for segment in segments])
+                        result = self.model.transcribe(path, language='ru')
+                        transcription = result['text']
                         duration = time.time() - start_time
 
                         # Разделение текста на части, если он превышает лимит
                         max_length = 3696  # Максимальная длина сообщения
-                        messages = self.split_text(result_text, max_length)
+                        messages = self.split_text(transcription, max_length)
 
                         # Отправка первого сообщения путем редактирования исходного
                         first_message_text = f"Распознанный текст:\n\n<i>{messages[0]}</i>\n\n" \
