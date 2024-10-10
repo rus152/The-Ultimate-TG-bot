@@ -76,7 +76,7 @@ class VoiceBot:
         # Загрузка модели с обработкой исключений
         try:
             logging.info('Loading model...')
-            self.model = whisper.load_model("large", device="cpu")
+            self.model = whisper.load_model("turbo", device="cpu")
             logging.info('Model loaded')
         except Exception as e:
             logging.error(f'Error loading model: {e}')
