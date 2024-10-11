@@ -72,6 +72,7 @@ class VoiceBot:
         self.setup()
         self.chat_manager = ChatManager()
         self.bot = telebot.TeleBot(self.api_token)
+        self.debug_mode = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
 
         # Загрузка модели с обработкой исключений
         try:
@@ -104,7 +105,7 @@ class VoiceBot:
         logging.info('Starting bot')
         threading_list = [
             Thread(target=self.voice_handler, daemon=True),
-            Thread(target=self.queue_manager, daemon=True)
+            #Thread(target=self.queue_manager, daemon=True)
         ]
 
         for thread in threading_list:
@@ -116,24 +117,36 @@ class VoiceBot:
     def register_handlers(self):
         @self.bot.message_handler(content_types=['voice'])
         def handle_voice(message):
+            if self.debug_mode and message.chat.id != -1002381757029:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
             self.process_voice_message(message)
 
         @self.bot.message_handler(content_types=['video_note'])
         def handle_video_note(message):
+            if self.debug_mode and message.chat.id != -1002381757029:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
             self.process_video_note_message(message)
 
         @self.bot.message_handler(commands=['check'])
         def check_queue(message):
+            if self.debug_mode and message.chat.id != -1002381757029:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
             chat_data = self.chat_manager.display_chats()
             self.bot.reply_to(message, chat_data)
 
         @self.bot.message_handler(commands=['everyone'])
         def ping_all(message):
+            if self.debug_mode and message.chat.id != -1002381757029:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
             self.process_ping_all(message)
 
     def process_voice_message(self, message):
         try:
-            sent_message = self.bot.reply_to(message, 'Обработка...')
+            sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.voice.file_id)
             downloaded_file = self.bot.download_file(file_info.file_path)
 
@@ -149,7 +162,7 @@ class VoiceBot:
 
     def process_video_note_message(self, message):
         try:
-            sent_message = self.bot.reply_to(message, 'Обработка...')
+            sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.video_note.file_id)
             downloaded_file = self.bot.download_file(file_info.file_path)
 
@@ -180,7 +193,7 @@ class VoiceBot:
                     path = first_chat['path']
                     try:
                         self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                   text="Распознавание...", parse_mode='HTML')
+                                                       text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
                         result = self.model.transcribe(path, language='ru')
@@ -240,31 +253,25 @@ class VoiceBot:
         return messages
 
     def queue_manager(self):
-        previous_queue_length = 0
+        previous_queue_states = {}
         while True:
             try:
                 current_queue_length = self.chat_manager.count_chats()
-                if previous_queue_length != current_queue_length:
-                    for index, chat in enumerate(self.chat_manager.chat_data):
-                        if index > 0:
-                            try:
+                for index, chat in enumerate(self.chat_manager.chat_data):
+                    chat_id = chat['chat_id']
+                    message_id = chat['message_id']
+                    # Only edit the message if the state has changed
+                    if (chat_id, message_id) not in previous_queue_states or previous_queue_states[(chat_id, message_id)] != index:
+                        try:
+                            if index > 0:
                                 self.bot.edit_message_text(
-                                    chat_id=chat['chat_id'],
-                                    message_id=chat['message_id'],
-                                    text=f"Количество людей перед вами: {index}",
+                                    chat_id=chat_id,
+                                    message_id=message_id,
+                                    text="В очереди",
                                 )
-                                logging.info('Queue message updated')
-                            except telebot.apihelper.ApiTelegramException as e:
-                                logging.error(f'Failed to edit message: {e}')
-                        else:
-                            # Обновление статуса для первого в очереди
-                            self.bot.edit_message_text(
-                                chat_id=chat['chat_id'],
-                                message_id=chat['message_id'],
-                                text="Ваше сообщение обрабатывается...",
-                            )
-                    previous_queue_length = current_queue_length
-                    logging.info(f"Queue length updated to {previous_queue_length}")
+                            previous_queue_states[(chat_id, message_id)] = index
+                        except telebot.apihelper.ApiTelegramException as e:
+                            logging.error(f'Failed to edit message: {e}')
                 time.sleep(1)
             except Exception as e:
                 logging.error(f'Error in queue manager: {e}')
