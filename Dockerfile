@@ -1,40 +1,44 @@
 # Этап 1: Сборка (build stage)
 FROM python:3.11-slim AS build
 
-# Обновляем индекс пакетов, устанавливаем зависимости
-RUN apt update && apt install -y --no-install-recommends \
-    ffmpeg && \
-    apt clean && \
-    rm -rf /var/lib/apt/lists/*
+# Установка зависимостей системы и Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Создаем рабочую директорию
+# Создание рабочей директории
 WORKDIR /app
 
-# Копируем файлы requirements.txt и создаем виртуальное окружение
-COPY requirements.txt ./
-RUN python3 -m venv venv && \
+# Копирование и установка зависимостей
+COPY requirements.txt .
+RUN python -m venv venv && \
+    ./venv/bin/pip install --upgrade pip && \
     ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Копируем остальные файлы
+# Копирование исходного кода и файлов окружения
 COPY main.py ./
 COPY .env ./
 
-# Финальный этап: создаём минимальный образ
+# Этап 2: Финальный образ
 FROM python:3.11-slim
 
-# Устанавливаем только FFmpeg
-RUN apt update && apt install -y --no-install-recommends \
-    ffmpeg && \
-    apt clean && \
-    rm -rf /var/lib/apt/lists/*
+# Установка зависимостей системы
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Создаем рабочую директорию
+# Создание рабочей директории
 WORKDIR /app
 
-# Копируем виртуальное окружение и остальные файлы из этапа сборки
+# Копирование виртуального окружения и исходного кода из этапа сборки
 COPY --from=build /app/venv ./venv
 COPY --from=build /app/main.py ./
 COPY --from=build /app/.env ./
 
-# Запуск приложения
-CMD ["./venv/bin/python", "main.py"]
+# Установка переменной PATH для использования виртуального окружения
+ENV PATH="/app/venv/bin:$PATH"
+
+# Определение команды запуска
+CMD ["python", "main.py"]

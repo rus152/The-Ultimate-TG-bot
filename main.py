@@ -171,17 +171,18 @@ def queue():
 
 
 def Voice_Handler():
+    # Загружаем модель один раз вне цикла
+    model = whisper.load_model("turbo")
     while True:
-        if chat_manager.checker() == "Пусто":
-            pass
         if chat_manager.checker() == "Не пусто":
             logging.info('Запуск расшифровки')
-            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
-                                  text=f"Распознавание...", parse_mode='HTML')
+            bot.edit_message_text(
+                chat_id=chat_manager.first_chat_id(),
+                message_id=chat_manager.first_message_id(),
+                text=f"Распознавание...", parse_mode='HTML'
+            )
 
             warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
-
-            model = whisper.load_model("medium")
 
             # Open and read the audio file correctly
             audio_file = chat_manager.first_path()
@@ -192,12 +193,19 @@ def Voice_Handler():
             # Transcribe the audio
             result = model.transcribe(audio)
 
-            bot.edit_message_text(chat_id=chat_manager.first_chat_id(), message_id=chat_manager.first_message_id(),
-                                  text=f"Распознанный текст:\n\n<i>{result['text']}</i>", parse_mode='HTML')
+            bot.edit_message_text(
+                chat_id=chat_manager.first_chat_id(),
+                message_id=chat_manager.first_message_id(),
+                text=f"Распознанный текст:\n\n<i>{result['text']}</i>", parse_mode='HTML'
+            )
 
             os.remove(chat_manager.first_path())
 
             chat_manager.remove_chat()
+        else:
+            # Если очереди нет, делаем паузу
+            time.sleep(1)
+
 
 
 def main():
