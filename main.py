@@ -193,7 +193,7 @@ class VoiceBot:
                     path = first_chat['path']
                     try:
                         self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                       text="Распознавание...", parse_mode='HTML')
+                                                   text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
                         result = self.model.transcribe(path, language='ru')
@@ -204,23 +204,25 @@ class VoiceBot:
                         max_length = 3696  # Максимальная длина сообщения
                         messages = self.split_text(transcription, max_length)
 
-                        # Отправка первого сообщения путем редактирования исходного
-                        first_message_text = f"Распознанный текст:\n\n<i>{messages[0]}</i>\n\n" \
-                                             f"Время распознавания: {duration:.2f} секунд"
-                        self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                   text=first_message_text, parse_mode='HTML')
+                        if messages:
+                            # Отправка первого сообщения путем редактирования исходного
+                            first_message_text = f"Распознанный текст:\n\n<i>{messages[0]}</i>\n\n" \
+                                                f"Время распознавания: {duration:.2f} секунд"
+                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id, 
+                                                       text=first_message_text, parse_mode='HTML')
 
-                        # Отправка остальных сообщений, отвечая на предыдущее
-                        previous_message_id = message_id
-                        for msg in messages[1:]:
-                            sent_message = self.bot.send_message(
-                                chat_id=chat_id,
-                                text=f"<i>{msg}</i>",
-                                parse_mode='HTML',
-                                reply_to_message_id=previous_message_id
-                            )
-                            previous_message_id = sent_message.message_id
-
+                            # Отправка остальных сообщений с задержкой в 2 секунды
+                            previous_message_id = message_id
+                            for msg in messages[1:]:
+                                time.sleep(2)  # Задержка в 2 секунды
+                                sent_message = self.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"<i>{msg}</i>",
+                                    parse_mode='HTML',
+                                    reply_to_message_id=previous_message_id
+                                )
+                                previous_message_id = sent_message.message_id
+                                
                     except Exception as e:
                         logging.error(f'Error during transcription: {e}')
                         self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
