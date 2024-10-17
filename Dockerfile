@@ -1,27 +1,44 @@
-# Используем официальный образ Python в качестве базового
-FROM python:3.12-slim
+# Этап 1: Сборка (build stage)
+FROM python:3.11-slim AS build
 
-# Устанавливаем переменные окружения для предотвращения записи .pyc файлов и буферизации вывода
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Обновляем pip и устанавливаем системные зависимости
+# Установка зависимостей системы и Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Создаем рабочую директорию
+# Создание рабочей директории
 WORKDIR /app
 
-# Копируем файлы зависимостей
+# Копирование и установка зависимостей
 COPY requirements.txt .
+RUN python -m venv venv && \
+    ./venv/bin/pip install --upgrade pip && \
+    ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Устанавливаем зависимости Python
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# Копирование исходного кода и файлов окружения
+COPY main.py ./
+COPY .env ./
 
-# Копируем остальной код приложения
-COPY . .
+# Этап 2: Финальный образ
+FROM python:3.11-slim
 
-# Указываем команду для запуска бота
+# Установка зависимостей системы
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Создание рабочей директории
+WORKDIR /app
+
+# Копирование виртуального окружения и исходного кода из этапа сборки
+COPY --from=build /app/venv ./venv
+COPY --from=build /app/main.py ./
+COPY --from=build /app/.env ./
+
+# Установка переменной PATH для использования виртуального окружения
+ENV PATH="/app/venv/bin:$PATH"
+
+# Определение команды запуска
 CMD ["python", "main.py"]
