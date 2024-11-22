@@ -4,6 +4,7 @@ import time
 from threading import Thread
 
 import telebot
+from telebot.formatting import hcite
 from dotenv import load_dotenv
 from pydub import AudioSegment
 import whisper
@@ -206,7 +207,7 @@ class VoiceBot:
 
                         if messages:
                             # Отправка первого сообщения путем редактирования исходного
-                            first_message_text = f"Распознанный текст:\n\n<i>{messages[0]}</i>\n\n" \
+                            first_message_text = f"Распознанный текст:\n\n<blockquote expandable>{messages[0]}</blockquote>\n\n" \
                                                 f"Время распознавания: {duration:.2f} секунд"
                             self.bot.edit_message_text(chat_id=chat_id, message_id=message_id, 
                                                        text=first_message_text, parse_mode='HTML')
@@ -217,7 +218,7 @@ class VoiceBot:
                                 time.sleep(2)  # Задержка в 2 секунды
                                 sent_message = self.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"<i>{msg}</i>",
+                                    text=f"<blockquote expandable>{msg}</blockquote>",
                                     parse_mode='HTML',
                                     reply_to_message_id=previous_message_id
                                 )
