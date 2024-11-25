@@ -1,3 +1,5 @@
+# Dockerfile
+
 # Этап 1: Сборка (build stage)
 FROM python:3.11-slim AS build
 

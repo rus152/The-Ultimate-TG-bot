@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import logging
 import time
@@ -87,7 +89,7 @@ class VoiceBot:
     def setup(self):
         logging.info('Setting up bot')
         load_dotenv()
-        self.api_token = os.getenv('TOKEN')
+        self.api_token = os.getenv('TELEGRAM_BOT_TOKEN')
         if not self.api_token:
             logging.error('API Token not found. Please set it in the .env file.')
             exit(1)
