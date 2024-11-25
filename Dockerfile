@@ -20,7 +20,6 @@ RUN python -m venv venv && \
 
 # Копирование исходного кода и файлов окружения
 COPY main.py ./
-COPY .env ./
 
 # Этап 2: Финальный образ
 FROM python:3.11-slim
@@ -37,7 +36,6 @@ WORKDIR /app
 # Копирование виртуального окружения и исходного кода из этапа сборки
 COPY --from=build /app/venv ./venv
 COPY --from=build /app/main.py ./
-COPY --from=build /app/.env ./
 
 # Установка переменной PATH для использования виртуального окружения
 ENV PATH="/app/venv/bin:$PATH"
