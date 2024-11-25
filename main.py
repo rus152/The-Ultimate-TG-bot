@@ -73,6 +73,12 @@ class ChatManager:
 class VoiceBot:
     def __init__(self):
         self.setup()
+        self.api_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not self.api_token:
+            logging.error('API Token not found. Please set it in the environment variables.')
+            exit(1)
+        logging.info('API Token obtained')
+        
         self.chat_manager = ChatManager()
         self.bot = telebot.TeleBot(self.api_token)
         self.debug_mode = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
@@ -87,14 +93,6 @@ class VoiceBot:
             exit(1)
 
     def setup(self):
-        logging.info('Setting up bot')
-        load_dotenv()
-        self.api_token = os.getenv('TELEGRAM_BOT_TOKEN')
-        if not self.api_token:
-            logging.error('API Token not found. Please set it in the .env file.')
-            exit(1)
-        logging.info('API Token obtained')
-
         self.voice_folder = 'voice_messages'
         self.video_note_folder = 'video_notes'
 
