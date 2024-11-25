@@ -28,7 +28,7 @@ jobs:
             - name: Build and push UTGB image
               uses: docker/build-push-action@v5
               with:
-                  context: ./server
-                  file: ./server/Dockerfile
+                  context: ./
+                  file: ./Dockerfile
                   push: true
                   tags: the80hz/utgb:${{ github.sha }},the80hz/utgb:latest
