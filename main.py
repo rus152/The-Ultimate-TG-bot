@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import logging
 import time
@@ -5,9 +7,9 @@ from threading import Thread
 
 import telebot
 from telebot.formatting import hcite
-from dotenv import load_dotenv
 from pydub import AudioSegment
 import whisper
+from torch import cuda
 
 
 def setup_logging(filename: str) -> None:
@@ -71,28 +73,43 @@ class ChatManager:
 class VoiceBot:
     def __init__(self):
         self.setup()
-        self.chat_manager = ChatManager()
+
+        self.api_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not self.api_token:
+            logging.error('API Token not found. Please set it in the environment variables.')
+            exit(1)
         self.bot = telebot.TeleBot(self.api_token)
-        self.debug_mode = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+        logging.info('API Token obtained')
+        
+
+        self.debug_chat_id = os.getenv('DEBUG_CHAT_ID')
+        if self.debug_chat_id:
+            try:
+                self.debug_chat_id = int(self.debug_chat_id)
+                logging.info(f'Debug chat ID set to: {self.debug_chat_id}')
+            except ValueError:
+                logging.error('Invalid DEBUG_CHAT_ID. It should be a numeric value.')
+                self.debug_chat_id = None
+        
+        self.debug_mode = os.getenv('DEBUG_MODE', 'False')
+        self.debug_mode = self.debug_mode.lower() == 'true'
+
+        self.chat_manager = ChatManager()
 
         # Загрузка модели с обработкой исключений
         try:
             logging.info('Loading model...')
-            self.model = whisper.load_model("turbo", device="cpu")
+
+            # Определение cuda
+            device = "cuda" if cuda.is_available() else "cpu"
+
+            self.model = whisper.load_model("turbo", device=device)
             logging.info('Model loaded')
         except Exception as e:
             logging.error(f'Error loading model: {e}')
             exit(1)
 
     def setup(self):
-        logging.info('Setting up bot')
-        load_dotenv()
-        self.api_token = os.getenv('TOKEN')
-        if not self.api_token:
-            logging.error('API Token not found. Please set it in the .env file.')
-            exit(1)
-        logging.info('API Token obtained')
-
         self.voice_folder = 'voice_messages'
         self.video_note_folder = 'video_notes'
 
@@ -103,7 +120,7 @@ class VoiceBot:
         logging.info('Video notes folder is ready')
 
     def start(self):
-        logging.info('Starting bot')
+        logging.info('Bot started')
         threading_list = [
             Thread(target=self.voice_handler, daemon=True),
             #Thread(target=self.queue_manager, daemon=True)
@@ -118,21 +135,21 @@ class VoiceBot:
     def register_handlers(self):
         @self.bot.message_handler(content_types=['voice'])
         def handle_voice(message):
-            if self.debug_mode and message.chat.id != -1002381757029:
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
             self.process_voice_message(message)
 
         @self.bot.message_handler(content_types=['video_note'])
         def handle_video_note(message):
-            if self.debug_mode and message.chat.id != -1002381757029:
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
             self.process_video_note_message(message)
 
         @self.bot.message_handler(commands=['check'])
         def check_queue(message):
-            if self.debug_mode and message.chat.id != -1002381757029:
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
             chat_data = self.chat_manager.display_chats()
@@ -140,7 +157,7 @@ class VoiceBot:
 
         @self.bot.message_handler(commands=['everyone'])
         def ping_all(message):
-            if self.debug_mode and message.chat.id != -1002381757029:
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
             self.process_ping_all(message)
