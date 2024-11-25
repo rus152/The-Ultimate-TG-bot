@@ -3,6 +3,9 @@
 services:
   voice_bot:
     container_name: whisper_voice_bot
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: the80hz/utgb:latest
     env_file:
       - .env
