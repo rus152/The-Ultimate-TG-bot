@@ -121,7 +121,7 @@ class VoiceBot:
         logging.info('Video notes folder is ready')
 
     def start(self):
-        logging.info('Starting bot')
+        logging.info('Bot started')
         threading_list = [
             Thread(target=self.voice_handler, daemon=True),
             #Thread(target=self.queue_manager, daemon=True)
