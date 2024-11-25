@@ -7,7 +7,6 @@ from threading import Thread
 
 import telebot
 from telebot.formatting import hcite
-from dotenv import load_dotenv
 from pydub import AudioSegment
 import whisper
 from torch import cuda
