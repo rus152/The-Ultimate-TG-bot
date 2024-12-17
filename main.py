@@ -102,6 +102,7 @@ class VoiceBot:
 
             # Определение cuda
             device = "cuda" if cuda.is_available() else "cpu"
+            print(device)
 
             self.model = whisper.load_model("turbo", device=device)
             logging.info('Model loaded')
