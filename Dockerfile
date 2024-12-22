@@ -1,7 +1,7 @@
 # Dockerfile
 
 # Stage 1: Build
-FROM python:3.12-slim AS build
+FROM pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime AS build
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN python -m venv venv && \
 COPY main.py ./
 
 # Stage 2: Run
-FROM python:3.12-slim
+FROM pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \

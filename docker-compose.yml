@@ -3,6 +3,13 @@
 services:
   voice_bot:
     container_name: whisper_voice_bot
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     build:
       context: .
       dockerfile: Dockerfile

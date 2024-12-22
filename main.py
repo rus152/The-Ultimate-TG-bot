@@ -80,7 +80,6 @@ class VoiceBot:
             exit(1)
         self.bot = telebot.TeleBot(self.api_token)
         logging.info('API Token obtained')
-        
 
         self.debug_chat_id = os.getenv('DEBUG_CHAT_ID')
         if self.debug_chat_id:
@@ -102,7 +101,6 @@ class VoiceBot:
 
             # Определение cuda
             device = "cuda" if cuda.is_available() else "cpu"
-            print(device)
 
             self.model = whisper.load_model("turbo", device=device)
             logging.info('Model loaded')
@@ -194,7 +192,7 @@ class VoiceBot:
                 video_file.write(downloaded_file)
 
             audio = AudioSegment.from_file(file_name_video, format="mp4")
-            audio.export(file_name_audio, format="ogg")
+            audio.export(file_name_audio, format="mp3")
 
             os.remove(file_name_video)
 
@@ -226,8 +224,8 @@ class VoiceBot:
                         if messages:
                             # Отправка первого сообщения путем редактирования исходного
                             first_message_text = f"Распознанный текст:\n\n<blockquote expandable>{messages[0]}</blockquote>\n\n" \
-                                                f"Время распознавания: {duration:.2f} секунд"
-                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id, 
+                                                 f"Время распознавания: {duration:.2f} секунд"
+                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
                                                        text=first_message_text, parse_mode='HTML')
 
                             # Отправка остальных сообщений с задержкой в 2 секунды
@@ -241,7 +239,7 @@ class VoiceBot:
                                     reply_to_message_id=previous_message_id
                                 )
                                 previous_message_id = sent_message.message_id
-                                
+
                     except Exception as e:
                         logging.error(f'Error during transcription: {e}')
                         self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
@@ -282,7 +280,8 @@ class VoiceBot:
                     chat_id = chat['chat_id']
                     message_id = chat['message_id']
                     # Only edit the message if the state has changed
-                    if (chat_id, message_id) not in previous_queue_states or previous_queue_states[(chat_id, message_id)] != index:
+                    if (chat_id, message_id) not in previous_queue_states or previous_queue_states[
+                        (chat_id, message_id)] != index:
                         try:
                             if index > 0:
                                 self.bot.edit_message_text(
