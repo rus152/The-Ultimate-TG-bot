@@ -362,3 +362,4 @@ cache/
 *.bin
 *.pt
 *.pth
+*.wav
