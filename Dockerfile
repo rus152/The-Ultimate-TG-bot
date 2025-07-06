@@ -14,7 +14,8 @@ RUN python -m venv venv && \
     ./venv/bin/pip install --prefer-binary --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY main.py ./
+COPY *.py ./
+COPY asr/ ./asr/
 
 # Stage 2: Production runtime
 FROM pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime AS runtime
@@ -32,7 +33,8 @@ WORKDIR /app
 
 # Copy Python environment and source code from build stage
 COPY --from=build /app/venv ./venv
-COPY --from=build /app/main.py ./
+COPY --from=build /app/*.py ./
+COPY --from=build /app/asr ./asr
 
 # Create directories for voice files
 RUN mkdir -p voice_messages video_notes logs && \
