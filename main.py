@@ -9,6 +9,10 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+import socket
+import requests
+from urllib3.exceptions import ProtocolError
+from http.client import RemoteDisconnected
 
 import telebot
 from telebot.formatting import hcite
@@ -144,12 +148,70 @@ class ChatManager:
             return len(self._chat_data) == 0
 
 
+class ConnectionManager:
+    """Менеджер соединений с автоматическим переподключением"""
+    
+    def __init__(self, bot_token: str, max_retries: int = 5, retry_delay: int = 5):
+        self.bot_token = bot_token
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self._connection_errors = (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.HTTPError,
+            ProtocolError,
+            RemoteDisconnected,
+            socket.error,
+            OSError,
+            telebot.apihelper.ApiTelegramException
+        )
+    
+    def check_internet_connection(self) -> bool:
+        """Проверяет наличие интернет-соединения"""
+        try:
+            # Проверяем доступность DNS Google
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            return True
+        except (socket.error, OSError):
+            return False
+    
+    def wait_for_connection(self) -> None:
+        """Ждет восстановления интернет-соединения"""
+        while not self.check_internet_connection():
+            logging.warning("Нет интернет-соединения. Повторная попытка через 10 секунд...")
+            time.sleep(10)
+        logging.info("Интернет-соединение восстановлено")
+    
+    def execute_with_retry(self, func, *args, **kwargs):
+        """Выполняет функцию с автоматическими повторными попытками"""
+        for attempt in range(self.max_retries):
+            try:
+                return func(*args, **kwargs)
+            except self._connection_errors as e:
+                logging.error(f"Ошибка соединения (попытка {attempt + 1}/{self.max_retries}): {e}")
+                
+                if attempt < self.max_retries - 1:
+                    # Проверяем интернет-соединение
+                    if not self.check_internet_connection():
+                        self.wait_for_connection()
+                    
+                    delay = self.retry_delay * (2 ** attempt)  # Экспоненциальная задержка
+                    logging.info(f"Повторная попытка через {delay} секунд...")
+                    time.sleep(delay)
+                else:
+                    logging.error("Все попытки переподключения исчерпаны")
+                    raise
+        
+        return None
+
+
 class VoiceBot:
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config.from_env()
         self.setup()
 
         self.bot = telebot.TeleBot(self.config.telegram_bot_token)
+        self.connection_manager = ConnectionManager(self.config.telegram_bot_token)
         logging.info('API Token obtained')
 
         self.chat_manager = ChatManager()
@@ -175,6 +237,7 @@ class VoiceBot:
         logging.info('Video notes folder is ready')
 
     def start(self):
+        """Запуск бота с автоматическим переподключением"""
         logging.info('Bot started')
         
         threading_list = [
@@ -186,43 +249,103 @@ class VoiceBot:
             thread.start()
             
         self.register_handlers()
-        self.bot.polling()
+        
+        # Запуск polling с автоматическим переподключением
+        self.start_polling_with_retry()
+    
+    def start_polling_with_retry(self):
+        """Запуск polling с автоматическим переподключением при сбоях"""
+        while True:
+            try:
+                logging.info("Запуск polling...")
+                self.bot.polling(none_stop=True, interval=0, timeout=20)
+            except Exception as e:
+                logging.error(f"Ошибка polling: {e}")
+                
+                # Проверяем интернет-соединение
+                if not self.connection_manager.check_internet_connection():
+                    logging.warning("Отсутствует интернет-соединение")
+                    self.connection_manager.wait_for_connection()
+                
+                # Пауза перед перезапуском
+                retry_delay = 10
+                logging.info(f"Перезапуск через {retry_delay} секунд...")
+                time.sleep(retry_delay)
+                
+                # Создаем новый экземпляр бота
+                try:
+                    self.bot.stop_polling()
+                    self.bot = telebot.TeleBot(self.config.telegram_bot_token)
+                    self.register_handlers()
+                    logging.info("Бот переинициализирован")
+                except Exception as reinit_error:
+                    logging.error(f"Ошибка при переинициализации бота: {reinit_error}")
+                    time.sleep(5)
 
     def register_handlers(self):
         @self.bot.message_handler(content_types=['voice'])
         def handle_voice(message):
             if self.config.debug_mode and self.config.debug_chat_id and message.chat.id != self.config.debug_chat_id:
-                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                self.connection_manager.execute_with_retry(
+                    self.bot.reply_to, message, 'В данный момент бот находится на обслуживании, приносим извинения'
+                )
                 return
             self.process_voice_message(message)
 
         @self.bot.message_handler(content_types=['video_note'])
         def handle_video_note(message):
             if self.config.debug_mode and self.config.debug_chat_id and message.chat.id != self.config.debug_chat_id:
-                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                self.connection_manager.execute_with_retry(
+                    self.bot.reply_to, message, 'В данный момент бот находится на обслуживании, приносим извинения'
+                )
                 return
             self.process_video_note_message(message)
 
         @self.bot.message_handler(commands=['check'])
         def check_queue(message):
             if self.config.debug_mode and self.config.debug_chat_id and message.chat.id != self.config.debug_chat_id:
-                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                self.connection_manager.execute_with_retry(
+                    self.bot.reply_to, message, 'В данный момент бот находится на обслуживании, приносим извинения'
+                )
                 return
             chat_data = self.chat_manager.display_chats()
-            self.bot.reply_to(message, chat_data)
+            self.connection_manager.execute_with_retry(
+                self.bot.reply_to, message, chat_data
+            )
 
         @self.bot.message_handler(commands=['everyone'])
         def ping_all(message):
             if self.config.debug_mode and self.config.debug_chat_id and message.chat.id != self.config.debug_chat_id:
-                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                self.connection_manager.execute_with_retry(
+                    self.bot.reply_to, message, 'В данный момент бот находится на обслуживании, приносим извинения'
+                )
                 return
             self.process_ping_all(message)
 
     def process_voice_message(self, message):
         try:
-            sent_message = self.bot.reply_to(message, 'В очереди...')
-            file_info = self.bot.get_file(message.voice.file_id)
-            downloaded_file = self.bot.download_file(file_info.file_path)
+            sent_message = self.connection_manager.execute_with_retry(
+                self.bot.reply_to, message, 'В очереди...'
+            )
+            if not sent_message:
+                logging.error("Не удалось отправить сообщение в очередь")
+                return
+                
+            file_info = self.connection_manager.execute_with_retry(
+                self.bot.get_file, message.voice.file_id
+            )
+            
+            if not file_info or not file_info.file_path:
+                logging.error("Не удалось получить информацию о файле")
+                return
+                
+            downloaded_file = self.connection_manager.execute_with_retry(
+                self.bot.download_file, file_info.file_path
+            )
+            
+            if not downloaded_file:
+                logging.error("Не удалось скачать файл")
+                return
 
             file_name = os.path.join(
                 self.config.voice_folder, f"voice_{message.from_user.id}_{message.message_id}.ogg")
@@ -236,9 +359,28 @@ class VoiceBot:
 
     def process_video_note_message(self, message):
         try:
-            sent_message = self.bot.reply_to(message, 'В очереди...')
-            file_info = self.bot.get_file(message.video_note.file_id)
-            downloaded_file = self.bot.download_file(file_info.file_path)
+            sent_message = self.connection_manager.execute_with_retry(
+                self.bot.reply_to, message, 'В очереди...'
+            )
+            if not sent_message:
+                logging.error("Не удалось отправить сообщение в очередь")
+                return
+                
+            file_info = self.connection_manager.execute_with_retry(
+                self.bot.get_file, message.video_note.file_id
+            )
+            
+            if not file_info or not file_info.file_path:
+                logging.error("Не удалось получить информацию о файле")
+                return
+                
+            downloaded_file = self.connection_manager.execute_with_retry(
+                self.bot.download_file, file_info.file_path
+            )
+            
+            if not downloaded_file:
+                logging.error("Не удалось скачать файл")
+                return
 
             file_name_video = os.path.join(
                 self.config.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp4")
@@ -278,7 +420,8 @@ class VoiceBot:
         file_path = Path(chat_data.path)
         
         try:
-            self.bot.edit_message_text(
+            self.connection_manager.execute_with_retry(
+                self.bot.edit_message_text,
                 chat_id=chat_data.chat_id,
                 message_id=chat_data.message_id,
                 text="Распознавание...",
@@ -287,11 +430,12 @@ class VoiceBot:
 
             start_time = time.time()
             result = self.model.transcribe(str(file_path), language='ru')
-            transcription = result['text']
+            transcription = result.get('text', '') if isinstance(result, dict) else str(result)
             duration = time.time() - start_time
 
-            if not transcription.strip():
-                self.bot.edit_message_text(
+            if not transcription or not str(transcription).strip():
+                self.connection_manager.execute_with_retry(
+                    self.bot.edit_message_text,
                     chat_id=chat_data.chat_id,
                     message_id=chat_data.message_id,
                     text="Не удалось распознать речь в аудиозаписи",
@@ -299,12 +443,13 @@ class VoiceBot:
                 )
                 return
 
-            self._send_transcription_messages(chat_data, transcription, duration)
+            self._send_transcription_messages(chat_data, str(transcription), duration)
 
         except Exception as e:
             logging.error(f'Error during transcription: {e}')
             with contextlib.suppress(Exception):
-                self.bot.edit_message_text(
+                self.connection_manager.execute_with_retry(
+                    self.bot.edit_message_text,
                     chat_id=chat_data.chat_id,
                     message_id=chat_data.message_id,
                     text="Ошибка во время распознавания",
@@ -329,24 +474,29 @@ class VoiceBot:
             f"Время распознавания: {duration:.2f} секунд"
         )
         
-        self.bot.edit_message_text(
+        self.connection_manager.execute_with_retry(
+            self.bot.edit_message_text,
             chat_id=chat_data.chat_id,
             message_id=chat_data.message_id,
             text=first_message_text,
             parse_mode='HTML'
-        )# Отправка остальных сообщений
+        )
+        
+        # Отправка остальных сообщений
         if len(messages) > 1:
             previous_message_id = chat_data.message_id
             for msg in messages[1:]:
                 try:
                     time.sleep(2)  # Соблюдение лимитов API
-                    sent_message = self.bot.send_message(
+                    sent_message = self.connection_manager.execute_with_retry(
+                        self.bot.send_message,
                         chat_id=chat_data.chat_id,
                         text=f"<blockquote expandable>{msg}</blockquote>",
                         parse_mode='HTML',
                         reply_to_message_id=previous_message_id
                     )
-                    previous_message_id = sent_message.message_id
+                    if sent_message:
+                        previous_message_id = sent_message.message_id
                 except Exception as e:
                     logging.error(f'Error sending continuation message: {e}')
                     break
@@ -415,13 +565,14 @@ class VoiceBot:
                         (chat_id, message_id)] != index:
                         try:
                             if index > 0:
-                                self.bot.edit_message_text(
+                                self.connection_manager.execute_with_retry(
+                                    self.bot.edit_message_text,
                                     chat_id=chat_id,
                                     message_id=message_id,
                                     text="В очереди",
                                 )
                             previous_queue_states[(chat_id, message_id)] = index
-                        except telebot.apihelper.ApiTelegramException as e:
+                        except Exception as e:
                             logging.error(f'Failed to edit message: {e}')
                 time.sleep(1)
             except Exception as e:
@@ -434,16 +585,31 @@ class VoiceBot:
 
         try:
             # Получаем информацию о чате
-            chat = self.bot.get_chat(chat_id)
+            chat = self.connection_manager.execute_with_retry(
+                self.bot.get_chat, chat_id
+            )
 
             # Проверяем, является ли бот администратором
-            bot_member = self.bot.get_chat_member(chat_id, self.bot.get_me().id)
-            if bot_member.status not in ['administrator', 'creator']:
-                self.bot.send_message(chat_id, "Бот должен быть администратором, чтобы упоминать участников.")
+            bot_member = self.connection_manager.execute_with_retry(
+                self.bot.get_chat_member, chat_id, self.bot.get_me().id
+            )
+            
+            if not bot_member or bot_member.status not in ['administrator', 'creator']:
+                self.connection_manager.execute_with_retry(
+                    self.bot.send_message, chat_id, "Бот должен быть администратором, чтобы упоминать участников."
+                )
                 return
 
             # Получаем всех участников чата (может быть ограничено)
-            members = self.bot.get_chat_administrators(chat_id)
+            members = self.connection_manager.execute_with_retry(
+                self.bot.get_chat_administrators, chat_id
+            )
+            
+            if not members:
+                self.connection_manager.execute_with_retry(
+                    self.bot.send_message, chat_id, "Не удалось получить список участников."
+                )
+                return
 
             # Формируем упоминания участников
             for member in members:
@@ -460,12 +626,18 @@ class VoiceBot:
             ping_message = ' '.join(all_members)
 
             if ping_message:
-                self.bot.send_message(chat_id, ping_message, parse_mode='HTML')
+                self.connection_manager.execute_with_retry(
+                    self.bot.send_message, chat_id, ping_message, parse_mode='HTML'
+                )
             else:
-                self.bot.send_message(chat_id, "Не удалось получить список участников для упоминания.")
+                self.connection_manager.execute_with_retry(
+                    self.bot.send_message, chat_id, "Не удалось получить список участников для упоминания."
+                )
         except Exception as e:
             logging.error(f'Error in ping_all: {e}')
-            self.bot.send_message(chat_id, f"Не удалось получить список участников: {e}")
+            self.connection_manager.execute_with_retry(
+                self.bot.send_message, chat_id, f"Не удалось получить список участников: {e}"
+            )
 
 
 if __name__ == "__main__":
