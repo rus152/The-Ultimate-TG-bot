@@ -3,6 +3,13 @@
 services:
   voice_bot:
     container_name: whisper_voice_bot
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: the80hz/utgb:latest
+    
+    # GPU support for NVIDIA
     deploy:
       resources:
         reservations:
@@ -10,10 +17,48 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: the80hz/utgb:latest
+    
+    # Environment configuration
     env_file:
       - .env
+    
+    # Persistent storage for logs
+    volumes:
+      - ./logs:/app/logs
+      - ./voice_messages:/app/voice_messages
+      - ./video_notes:/app/video_notes
+    
+    # Restart policy
     restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Resource limits
+    mem_limit: 4g
+    mem_reservation: 2g
+    
+    # Network configuration
+    networks:
+      - voice_bot_network
+
+networks:
+  voice_bot_network:
+    driver: bridge
+    name: voice_bot_network

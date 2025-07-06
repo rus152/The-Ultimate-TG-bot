@@ -1,5 +1,16 @@
 # requirements.txt
 
-pydub
-PyTelegramBotAPI
-openai-whisper
+# Основные зависимости
+pydub>=0.25.1
+PyTelegramBotAPI>=4.14.0
+openai-whisper>=20231117
+
+# Дополнительные зависимости для обработки аудио
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Для улучшенной производительности
+ffmpeg-python>=0.2.0
+
+# Для обработки путей
+pathlib2>=2.3.7; python_version < "3.4"
