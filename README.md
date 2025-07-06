@@ -25,23 +25,27 @@
 ### Локальная установка
 
 1. **Клонируйте репозиторий:**
+
    ```bash
    git clone <repository_url>
    cd The-Ultimate-TG-bot
    ```
 
 2. **Установите зависимости:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. **Настройте переменные окружения:**
+
    ```bash
    cp example.env .env
    # Отредактируйте .env файл с вашими настройками
    ```
 
 4. **Запустите бота:**
+
    ```bash
    python main.py
    ```
@@ -49,18 +53,21 @@
 ### Docker установка
 
 1. **Клонируйте репозиторий:**
+
    ```bash
    git clone <repository_url>
    cd The-Ultimate-TG-bot
    ```
 
 2. **Настройте переменные окружения:**
+
    ```bash
    cp example.env .env
    # Отредактируйте .env файл с вашими настройками
    ```
 
 3. **Запустите с Docker Compose:**
+
    ```bash
    docker-compose up -d
    ```
@@ -122,6 +129,7 @@
 ### Логирование
 
 Бот создает подробные логи с ротацией файлов:
+
 - Размер файла лога: 10MB
 - Количество архивных файлов: 5
 - Уровни логирования: DEBUG, INFO, WARNING, ERROR, CRITICAL

@@ -13,4 +13,4 @@ torchaudio>=2.0.0
 ffmpeg-python>=0.2.0
 
 # Для обработки путей
-pathlib2>=2.3.7; python_version < "3.4"
+pathlib2>=2.3.7
