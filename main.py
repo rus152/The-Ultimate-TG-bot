@@ -8,7 +8,7 @@ from threading import Thread
 import telebot
 from telebot.formatting import hcite
 from pydub import AudioSegment
-import whisper
+from faster_whisper import WhisperModel
 from torch import cuda
 
 
@@ -97,15 +97,26 @@ class VoiceBot:
 
         # Загрузка модели с обработкой исключений
         try:
-            logging.info('Loading model...')
+            logging.info('Loading Faster-Whisper model...')
 
             # Определение cuda
             device = "cuda" if cuda.is_available() else "cpu"
+            compute_type = "int8" # Устанавливаем тип вычислений в int8
+            model_size = "turbo"
 
-            self.model = whisper.load_model("turbo", device=device)
-            logging.info('Model loaded')
+            # Инициализация модели Faster-Whisper
+            # num_workers=1 рекомендуется для стабильности в многопоточных приложениях,
+            # download_root позволяет указать путь для кэширования моделей.
+            self.model = WhisperModel(
+                model_size_or_path=model_size,
+                device=device,
+                compute_type=compute_type,
+                num_workers=1, # Важно для стабильности с потоками
+                download_root="./model_cache" # Опционально, папка для кэша моделей внутри контейнера
+            )
+            logging.info('Faster-Whisper Model loaded')
         except Exception as e:
-            logging.error(f'Error loading model: {e}')
+            logging.error(f'Error loading Faster-Whisper model: {e}')
             exit(1)
 
     def setup(self):
@@ -213,8 +224,14 @@ class VoiceBot:
                                                    text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
-                        result = self.model.transcribe(path, language='ru')
-                        transcription = result['text']
+                        segments, info = self.model.transcribe(
+                            path,
+                            language='ru',
+                            beam_size=5, # Можно настроить для баланса скорости/качества
+                            vad_filter=True # Используем встроенный VAD для лучшей обработки пауз
+                        )
+                        # Собираем весь текст из сегментов
+                        transcription = " ".join([segment.text for segment in segments])
                         duration = time.time() - start_time
 
                         # Разделение текста на части, если он превышает лимит
