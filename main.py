@@ -240,8 +240,11 @@ class VoiceBot:
 
                         if messages:
                             # Отправка первого сообщения путем редактирования исходного
-                            first_message_text = f"Распознанный текст:\n\n<blockquote expandable>{messages[0]}</blockquote>\n\n" \
-                                                 f"Время распознавания: {duration:.2f} секунд"
+                            # Отправка первого сообщения путем редактирования исходного
+                            first_message_text = f"<blockquote expandable>{messages[0]}</blockquote>"
+                            # Добавляем время распознавания только в режиме отладки
+                            if self.debug_mode:
+                                first_message_text += f"\nВремя распознавания: {duration:.2f} секунд"
                             self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
                                                        text=first_message_text, parse_mode='HTML')
 
