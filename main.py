@@ -240,13 +240,15 @@ class VoiceBot:
 
                         if messages:
                             # Отправка первого сообщения путем редактирования исходного
-                            # Отправка первого сообщения путем редактирования исходного
                             first_message_text = f"<blockquote expandable>{messages[0]}</blockquote>"
                             # Добавляем время распознавания только в режиме отладки
                             if self.debug_mode:
                                 first_message_text += f"\nВремя распознавания: {duration:.2f} секунд"
-                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                       text=first_message_text, parse_mode='HTML')
+                            try:
+                                self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                           text=first_message_text, parse_mode='HTML')
+                            except Exception as e:
+                                logging.error(f'Failed to edit message with transcription: {e}')
 
                             # Отправка остальных сообщений с задержкой в 2 секунды
                             previous_message_id = message_id
@@ -259,6 +261,17 @@ class VoiceBot:
                                     reply_to_message_id=previous_message_id
                                 )
                                 previous_message_id = sent_message.message_id
+                        else:
+                            # Если расшифровка пустая — обновляем сообщение, чтобы не оставлять 'Распознавание...'
+                            no_text = "Ничего не распознано."
+                            if self.debug_mode:
+                                no_text += f"\nВремя распознавания: {duration:.2f} секунд"
+                            try:
+                                self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                           text=no_text,
+                                                           parse_mode='HTML')
+                            except Exception as e:
+                                logging.error(f'Failed to update empty transcription message: {e}')
 
                     except Exception as e:
                         logging.error(f'Error during transcription: {e}')
