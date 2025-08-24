@@ -4,4 +4,3 @@ pydub
 PyTelegramBotAPI
 faster-whisper
 ctranslate2>=4.0.0
-torch>=2.0.0

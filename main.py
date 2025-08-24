@@ -9,7 +9,6 @@ import telebot
 from telebot.formatting import hcite
 from pydub import AudioSegment
 from faster_whisper import WhisperModel
-from torch import cuda
 
 
 def setup_logging(filename: str) -> None:
@@ -99,8 +98,16 @@ class VoiceBot:
         try:
             logging.info('Loading Faster-Whisper model...')
 
-            # Определение cuda
-            device = "cuda" if cuda.is_available() else "cpu"
+            # Определение устройства: используем переменную окружения USE_CUDA или fallback на CPU
+            use_cuda_env = os.getenv('USE_CUDA')
+            if use_cuda_env is not None:
+                use_cuda = use_cuda_env.lower() in ('1', 'true', 'yes')
+                logging.info(f'USE_CUDA env var set: {use_cuda_env} -> use_cuda={use_cuda}')
+            else:
+                use_cuda = False
+                logging.info('USE_CUDA not set, defaulting to CPU (use_cuda=False)')
+
+            device = "cuda" if use_cuda else "cpu"
             compute_type = "int8" # Устанавливаем тип вычислений в int8
             model_size = "turbo"
 
@@ -176,7 +183,13 @@ class VoiceBot:
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.voice.file_id)
-            downloaded_file = self.bot.download_file(file_info.file_path)
+            # Проверяем, что file_path присутствует, прежде чем скачивать
+            file_path = getattr(file_info, 'file_path', None)
+            if not file_path:
+                logging.error('File path is missing in file_info for voice message')
+                self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                return
+            downloaded_file = self.bot.download_file(file_path)
 
             file_name = os.path.join(
                 self.voice_folder, f"voice_{message.from_user.id}_{message.message_id}.ogg")
@@ -192,7 +205,13 @@ class VoiceBot:
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.video_note.file_id)
-            downloaded_file = self.bot.download_file(file_info.file_path)
+            # Проверяем, что file_path присутствует, прежде чем скачивать
+            file_path = getattr(file_info, 'file_path', None)
+            if not file_path:
+                logging.error('File path is missing in file_info for video_note')
+                self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                return
+            downloaded_file = self.bot.download_file(file_path)
 
             file_name_video = os.path.join(
                 self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp4")
