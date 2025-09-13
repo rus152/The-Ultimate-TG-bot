@@ -439,34 +439,13 @@ class VoiceBot:
                         transcription = " ".join([segment.text for segment in segments])
                         duration = time.time() - start_time
 
-                        # Разделение текста на части, если он превышает лимит
-                        max_length = 3696  # Максимальная длина сообщения
-                        messages = self.split_text(transcription, max_length)
+                        # Максимальная длина сообщения и определение типа носителя
+                        max_length = 3696  # Максимальная длина сообщения с запасом под HTML
+                        is_voice_or_vnote = (
+                            path.startswith(self.voice_folder) or path.startswith(self.video_note_folder)
+                        )
 
-                        if messages:
-                            # Отправка первого сообщения путем редактирования исходного
-                            first_message_text = f"<blockquote expandable>{messages[0]}</blockquote>"
-                            # Добавляем время распознавания только в режиме отладки
-                            if self.debug_mode:
-                                first_message_text += f"\nВремя распознавания: {duration:.2f} секунд"
-                            try:
-                                self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                           text=first_message_text, parse_mode='HTML')
-                            except Exception as e:
-                                logging.error(f'Failed to edit message with transcription: {e}')
-
-                            # Отправка остальных сообщений с задержкой в 2 секунды
-                            previous_message_id = message_id
-                            for msg in messages[1:]:
-                                time.sleep(2)  # Задержка в 2 секунды
-                                sent_message = self.bot.send_message(
-                                    chat_id=chat_id,
-                                    text=f"<blockquote expandable>{msg}</blockquote>",
-                                    parse_mode='HTML',
-                                    reply_to_message_id=previous_message_id
-                                )
-                                previous_message_id = sent_message.message_id
-                        else:
+                        if not transcription.strip():
                             # Если расшифровка пустая — обновляем сообщение, чтобы не оставлять 'Распознавание...'
                             no_text = "Ничего не распознано."
                             if self.debug_mode:
@@ -477,6 +456,78 @@ class VoiceBot:
                                                            parse_mode='HTML')
                             except Exception as e:
                                 logging.error(f'Failed to update empty transcription message: {e}')
+                        else:
+                            if is_voice_or_vnote:
+                                # Для voice и video_note оставляем поведение с разбиением на несколько сообщений
+                                messages = self.split_text(transcription, max_length)
+                                if messages:
+                                    first_message_text = f"<blockquote expandable>{messages[0]}</blockquote>"
+                                    if self.debug_mode:
+                                        first_message_text += f"\nВремя распознавания: {duration:.2f} секунд"
+                                    try:
+                                        self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                                   text=first_message_text, parse_mode='HTML')
+                                    except Exception as e:
+                                        logging.error(f'Failed to edit message with transcription: {e}')
+
+                                    previous_message_id = message_id
+                                    for msg in messages[1:]:
+                                        time.sleep(2)
+                                        sent_message = self.bot.send_message(
+                                            chat_id=chat_id,
+                                            text=f"<blockquote expandable>{msg}</blockquote>",
+                                            parse_mode='HTML',
+                                            reply_to_message_id=previous_message_id
+                                        )
+                                        previous_message_id = sent_message.message_id
+                            else:
+                                # Для audio/video/document (обрабатываются в ЛС):
+                                # Если текст помещается — отправляем одно сообщение, иначе — присылаем .txt файл
+                                if len(transcription) <= max_length:
+                                    text_msg = f"<blockquote expandable>{transcription}</blockquote>"
+                                    if self.debug_mode:
+                                        text_msg += f"\nВремя распознавания: {duration:.2f} секунд"
+                                    try:
+                                        self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                                   text=text_msg, parse_mode='HTML')
+                                    except Exception as e:
+                                        logging.error(f'Failed to edit single-message transcription: {e}')
+                                else:
+                                    # Генерируем txt-файл с полной расшифровкой
+                                    base_name = os.path.splitext(os.path.basename(path))[0]
+                                    txt_dir = self.media_folder if os.path.isdir(self.media_folder) else '.'
+                                    txt_path = os.path.join(txt_dir, f"{base_name}.txt")
+                                    try:
+                                        with open(txt_path, 'w', encoding='utf-8') as f:
+                                            f.write(transcription)
+                                        caption = None
+                                        if self.debug_mode:
+                                            caption = f"Время распознавания: {duration:.2f} секунд"
+                                        with open(txt_path, 'rb') as doc:
+                                            self.bot.send_document(chat_id=chat_id, document=doc, caption=caption)
+                                        # Обновляем исходное сообщение
+                                        try:
+                                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                                       text="Расшифровка отправлена файлом.")
+                                        except Exception as e:
+                                            logging.error(f'Failed to edit message after sending txt: {e}')
+                                    except Exception as e:
+                                        logging.error(f'Failed to create/send transcription txt: {e}')
+                                        # Фоллбэк: если не удалось отправить файл — сокращенно отправим как одно сообщение, обрезав текст
+                                        fallback_text = transcription[:max_length - 3] + '...'
+                                        try:
+                                            self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                                       text=f"<blockquote expandable>{fallback_text}</blockquote>",
+                                                                       parse_mode='HTML')
+                                        except Exception as e2:
+                                            logging.error(f'Failed to edit message with fallback text: {e2}')
+                                    finally:
+                                        # Пытаемся удалить временный txt
+                                        try:
+                                            if os.path.exists(txt_path):
+                                                os.remove(txt_path)
+                                        except Exception:
+                                            pass
 
                     except Exception as e:
                         logging.error(f'Error during transcription: {e}')
