@@ -129,12 +129,16 @@ class VoiceBot:
     def setup(self):
         self.voice_folder = 'voice_messages'
         self.video_note_folder = 'video_notes'
+        self.media_folder = 'media'
 
         os.makedirs(self.voice_folder, exist_ok=True)
         logging.info('Voice messages folder is ready')
 
         os.makedirs(self.video_note_folder, exist_ok=True)
         logging.info('Video notes folder is ready')
+
+        os.makedirs(self.media_folder, exist_ok=True)
+        logging.info('Generic media folder is ready')
 
     def start(self):
         logging.info('Bot started')
@@ -163,6 +167,27 @@ class VoiceBot:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
             self.process_video_note_message(message)
+
+        @self.bot.message_handler(content_types=['audio'])
+        def handle_audio(message):
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
+            self.process_audio_message(message)
+
+        @self.bot.message_handler(content_types=['video'])
+        def handle_video(message):
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
+            self.process_video_message(message)
+
+        @self.bot.message_handler(content_types=['document'])
+        def handle_document(message):
+            if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
+                self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
+                return
+            self.process_document_message(message)
 
         @self.bot.message_handler(commands=['check'])
         def check_queue(message):
@@ -216,7 +241,7 @@ class VoiceBot:
             file_name_video = os.path.join(
                 self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp4")
             file_name_audio = os.path.join(
-                self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.ogg")
+                self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
 
             with open(file_name_video, 'wb') as video_file:
                 video_file.write(downloaded_file)
@@ -229,6 +254,158 @@ class VoiceBot:
             self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
         except Exception as e:
             logging.error(f'Error processing video note: {e}')
+
+    def process_audio_message(self, message):
+        """Обрабатывает отправленные аудиофайлы (не voice): mp3/ogg/m4a/wav и др."""
+        try:
+            sent_message = self.bot.reply_to(message, 'В очереди...')
+            file_info = self.bot.get_file(message.audio.file_id)
+            file_path = getattr(file_info, 'file_path', None)
+            if not file_path:
+                logging.error('File path is missing in file_info for audio')
+                self.bot.reply_to(message, 'Не удалось получить аудиофайл для распознавания.')
+                return
+            downloaded_file = self.bot.download_file(file_path)
+
+            # Определяем расширение
+            file_name_attr = getattr(message.audio, 'file_name', None)
+            mime_type = getattr(message.audio, 'mime_type', '') or ''
+            ext = None
+            if file_name_attr and '.' in file_name_attr:
+                ext = os.path.splitext(file_name_attr)[1]
+            if not ext:
+                # По mime type
+                mime_to_ext = {
+                    'audio/mpeg': '.mp3',
+                    'audio/mp3': '.mp3',
+                    'audio/ogg': '.ogg',
+                    'audio/opus': '.opus',
+                    'audio/x-m4a': '.m4a',
+                    'audio/mp4': '.m4a',
+                    'audio/wav': '.wav',
+                    'audio/webm': '.webm',
+                    'audio/flac': '.flac',
+                }
+                ext = mime_to_ext.get(mime_type, '.mp3')
+
+            file_name = os.path.join(
+                self.media_folder, f"audio_{message.from_user.id}_{message.message_id}{ext}")
+
+            with open(file_name, 'wb') as f:
+                f.write(downloaded_file)
+
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name)
+        except Exception as e:
+            logging.error(f'Error processing audio message: {e}')
+
+    def process_video_message(self, message):
+        """Обрабатывает отправленные видеофайлы: mp4/mov/webm и др., извлекает аудио в mp3."""
+        try:
+            sent_message = self.bot.reply_to(message, 'В очереди...')
+            file_info = self.bot.get_file(message.video.file_id)
+            file_path = getattr(file_info, 'file_path', None)
+            if not file_path:
+                logging.error('File path is missing in file_info for video')
+                self.bot.reply_to(message, 'Не удалось получить видеофайл для распознавания.')
+                return
+            downloaded_file = self.bot.download_file(file_path)
+
+            # Определяем расширение видео
+            mime_type = getattr(message.video, 'mime_type', '') or ''
+            default_video_ext = '.mp4'
+            if 'webm' in mime_type:
+                default_video_ext = '.webm'
+            elif 'quicktime' in mime_type:
+                default_video_ext = '.mov'
+
+            file_name_video = os.path.join(
+                self.media_folder, f"video_{message.from_user.id}_{message.message_id}{default_video_ext}")
+            file_name_audio = os.path.join(
+                self.media_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
+
+            with open(file_name_video, 'wb') as vf:
+                vf.write(downloaded_file)
+
+            try:
+                audio = AudioSegment.from_file(file_name_video)
+                audio.export(file_name_audio, format="mp3")
+            finally:
+                # Удаляем исходное видео независимо от успеха экспорта
+                try:
+                    os.remove(file_name_video)
+                except Exception:
+                    pass
+
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+        except Exception as e:
+            logging.error(f'Error processing video message: {e}')
+
+    def process_document_message(self, message):
+        """Обрабатывает документы: если это аудио/видео — обрабатываем как соответствующий тип."""
+        try:
+            doc = message.document
+            mime_type = getattr(doc, 'mime_type', '') or ''
+            file_name_attr = getattr(doc, 'file_name', '') or ''
+            ext = os.path.splitext(file_name_attr)[1].lower() if file_name_attr else ''
+
+            def is_audio_ext(e):
+                return e in {'.mp3', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.flac', '.webm'}
+
+            def is_video_ext(e):
+                return e in {'.mp4', '.mov', '.mkv', '.webm', '.avi'}
+
+            if mime_type.startswith('audio/') or is_audio_ext(ext):
+                # Скачиваем и кладем как аудио
+                sent_message = self.bot.reply_to(message, 'В очереди...')
+                file_info = self.bot.get_file(doc.file_id)
+                file_path = getattr(file_info, 'file_path', None)
+                if not file_path:
+                    logging.error('File path is missing in file_info for document(audio)')
+                    self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                    return
+                downloaded_file = self.bot.download_file(file_path)
+
+                ext_to_use = ext if is_audio_ext(ext) else '.mp3'
+                file_name = os.path.join(
+                    self.media_folder, f"doc_audio_{message.from_user.id}_{message.message_id}{ext_to_use}")
+                with open(file_name, 'wb') as f:
+                    f.write(downloaded_file)
+                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name)
+                return
+
+            if mime_type.startswith('video/') or is_video_ext(ext):
+                # Скачиваем и обрабатываем как видео (извлекаем аудио)
+                sent_message = self.bot.reply_to(message, 'В очереди...')
+                file_info = self.bot.get_file(doc.file_id)
+                file_path = getattr(file_info, 'file_path', None)
+                if not file_path:
+                    logging.error('File path is missing in file_info for document(video)')
+                    self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                    return
+                downloaded_file = self.bot.download_file(file_path)
+
+                video_ext = ext if is_video_ext(ext) else '.mp4'
+                file_name_video = os.path.join(
+                    self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}{video_ext}")
+                file_name_audio = os.path.join(
+                    self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}.mp3")
+                with open(file_name_video, 'wb') as vf:
+                    vf.write(downloaded_file)
+                try:
+                    audio = AudioSegment.from_file(file_name_video)
+                    audio.export(file_name_audio, format="mp3")
+                finally:
+                    try:
+                        os.remove(file_name_video)
+                    except Exception:
+                        pass
+                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+                return
+
+            # Тип документа не поддерживается
+            self.bot.reply_to(message, 'Этот тип документа не поддерживается для распознавания.')
+        except Exception as e:
+            logging.error(f'Error processing document message: {e}')
 
     def voice_handler(self):
         while True:
