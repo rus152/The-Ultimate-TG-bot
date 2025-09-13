@@ -170,6 +170,9 @@ class VoiceBot:
 
         @self.bot.message_handler(content_types=['audio'])
         def handle_audio(message):
+            # Разрешаем обработку аудио только в личных сообщениях
+            if message.chat.type != 'private':
+                return
             if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
@@ -177,6 +180,9 @@ class VoiceBot:
 
         @self.bot.message_handler(content_types=['video'])
         def handle_video(message):
+            # Разрешаем обработку видео только в личных сообщениях
+            if message.chat.type != 'private':
+                return
             if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
@@ -184,6 +190,9 @@ class VoiceBot:
 
         @self.bot.message_handler(content_types=['document'])
         def handle_document(message):
+            # Разрешаем обработку документов только в личных сообщениях
+            if message.chat.type != 'private':
+                return
             if self.debug_mode and self.debug_chat_id and message.chat.id != self.debug_chat_id:
                 self.bot.reply_to(message, 'В данный момент бот находится на обслуживании, приносим извинения')
                 return
