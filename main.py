@@ -214,6 +214,7 @@ class VoiceBot:
             self.process_ping_all(message)
 
     def process_voice_message(self, message):
+        sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.voice.file_id)
@@ -222,6 +223,12 @@ class VoiceBot:
             if not file_path:
                 logging.error('File path is missing in file_info for voice message')
                 self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                # Удаляем служебное сообщение
+                try:
+                    if sent_message:
+                        self.bot.delete_message(message.chat.id, sent_message.message_id)
+                except Exception as de:
+                    logging.error(f'Failed to delete status message: {de}')
                 return
             downloaded_file = self.bot.download_file(file_path)
 
@@ -234,8 +241,15 @@ class VoiceBot:
             self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name)
         except Exception as e:
             logging.error(f'Error processing voice message: {e}')
+            # Удаляем служебное сообщение при ошибке
+            try:
+                if sent_message:
+                    self.bot.delete_message(message.chat.id, sent_message.message_id)
+            except Exception as de:
+                logging.error(f'Failed to delete status message: {de}')
 
     def process_video_note_message(self, message):
+        sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.video_note.file_id)
@@ -244,6 +258,11 @@ class VoiceBot:
             if not file_path:
                 logging.error('File path is missing in file_info for video_note')
                 self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                try:
+                    if sent_message:
+                        self.bot.delete_message(message.chat.id, sent_message.message_id)
+                except Exception as de:
+                    logging.error(f'Failed to delete status message: {de}')
                 return
             downloaded_file = self.bot.download_file(file_path)
 
@@ -263,9 +282,15 @@ class VoiceBot:
             self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
         except Exception as e:
             logging.error(f'Error processing video note: {e}')
+            try:
+                if sent_message:
+                    self.bot.delete_message(message.chat.id, sent_message.message_id)
+            except Exception as de:
+                logging.error(f'Failed to delete status message: {de}')
 
     def process_audio_message(self, message):
         """Обрабатывает отправленные аудиофайлы (не voice): mp3/ogg/m4a/wav и др."""
+        sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.audio.file_id)
@@ -273,6 +298,11 @@ class VoiceBot:
             if not file_path:
                 logging.error('File path is missing in file_info for audio')
                 self.bot.reply_to(message, 'Не удалось получить аудиофайл для распознавания.')
+                try:
+                    if sent_message:
+                        self.bot.delete_message(message.chat.id, sent_message.message_id)
+                except Exception as de:
+                    logging.error(f'Failed to delete status message: {de}')
                 return
             downloaded_file = self.bot.download_file(file_path)
 
@@ -306,9 +336,15 @@ class VoiceBot:
             self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name)
         except Exception as e:
             logging.error(f'Error processing audio message: {e}')
+            try:
+                if sent_message:
+                    self.bot.delete_message(message.chat.id, sent_message.message_id)
+            except Exception as de:
+                logging.error(f'Failed to delete status message: {de}')
 
     def process_video_message(self, message):
         """Обрабатывает отправленные видеофайлы: mp4/mov/webm и др., извлекает аудио в mp3."""
+        sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
             file_info = self.bot.get_file(message.video.file_id)
@@ -316,6 +352,11 @@ class VoiceBot:
             if not file_path:
                 logging.error('File path is missing in file_info for video')
                 self.bot.reply_to(message, 'Не удалось получить видеофайл для распознавания.')
+                try:
+                    if sent_message:
+                        self.bot.delete_message(message.chat.id, sent_message.message_id)
+                except Exception as de:
+                    logging.error(f'Failed to delete status message: {de}')
                 return
             downloaded_file = self.bot.download_file(file_path)
 
@@ -348,9 +389,15 @@ class VoiceBot:
             self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
         except Exception as e:
             logging.error(f'Error processing video message: {e}')
+            try:
+                if sent_message:
+                    self.bot.delete_message(message.chat.id, sent_message.message_id)
+            except Exception as de:
+                logging.error(f'Failed to delete status message: {de}')
 
     def process_document_message(self, message):
         """Обрабатывает документы: если это аудио/видео — обрабатываем как соответствующий тип."""
+        sent_message = None
         try:
             doc = message.document
             mime_type = getattr(doc, 'mime_type', '') or ''
@@ -371,6 +418,11 @@ class VoiceBot:
                 if not file_path:
                     logging.error('File path is missing in file_info for document(audio)')
                     self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                    try:
+                        if sent_message:
+                            self.bot.delete_message(message.chat.id, sent_message.message_id)
+                    except Exception as de:
+                        logging.error(f'Failed to delete status message: {de}')
                     return
                 downloaded_file = self.bot.download_file(file_path)
 
@@ -390,6 +442,11 @@ class VoiceBot:
                 if not file_path:
                     logging.error('File path is missing in file_info for document(video)')
                     self.bot.reply_to(message, 'Не удалось получить файл для распознавания.')
+                    try:
+                        if sent_message:
+                            self.bot.delete_message(message.chat.id, sent_message.message_id)
+                    except Exception as de:
+                        logging.error(f'Failed to delete status message: {de}')
                     return
                 downloaded_file = self.bot.download_file(file_path)
 
@@ -415,6 +472,12 @@ class VoiceBot:
             self.bot.reply_to(message, 'Этот тип документа не поддерживается для распознавания.')
         except Exception as e:
             logging.error(f'Error processing document message: {e}')
+            # Удаляем служебное сообщение, если оно было отправлено
+            try:
+                if sent_message:
+                    self.bot.delete_message(message.chat.id, sent_message.message_id)
+            except Exception as de:
+                logging.error(f'Failed to delete status message: {de}')
 
     def voice_handler(self):
         while True:
@@ -531,9 +594,11 @@ class VoiceBot:
 
                     except Exception as e:
                         logging.error(f'Error during transcription: {e}')
-                        self.bot.edit_message_text(chat_id=chat_id, message_id=message_id,
-                                                   text="Ошибка во время распознавания",
-                                                   parse_mode='HTML')
+                        # Удаляем служебное сообщение при ошибке распознавания
+                        try:
+                            self.bot.delete_message(chat_id, message_id)
+                        except Exception as de:
+                            logging.error(f'Failed to delete status message after error: {de}')
                     finally:
                         os.remove(path)
                         self.chat_manager.remove_chat()
