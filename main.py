@@ -114,12 +114,15 @@ class VoiceBot:
             # Инициализация модели Faster-Whisper
             # num_workers=1 рекомендуется для стабильности в многопоточных приложениях,
             # download_root позволяет указать путь для кэширования моделей.
+            model_cache_root = './model_cache'
+            os.makedirs(model_cache_root, exist_ok=True)
+            logging.info(f'Whisper model cache dir: {model_cache_root}')
             self.model = WhisperModel(
                 model_size_or_path=model_size,
                 device=device,
                 compute_type=compute_type,
                 num_workers=1, # Важно для стабильности с потоками
-                download_root="./model_cache" # Опционально, папка для кэша моделей внутри контейнера
+                download_root=model_cache_root # Папка для кэша моделей
             )
             logging.info('Faster-Whisper Model loaded')
         except Exception as e:

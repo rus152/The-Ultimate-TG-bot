@@ -14,6 +14,7 @@
 - `requirements.txt` — зависимости.
 - `example.env` — шаблон переменных окружения.
 - `voice_messages/`, `video_notes/` — папки для временных файлов.
+- `model_cache/` — кэш моделей faster-whisper (можно монтировать в Docker).
 
 ## Переменные окружения
 
@@ -23,15 +24,16 @@
 - `DEBUG_CHAT_ID` — id чата для тестирования debug-режима (например, `-1001234567890`).
 - `DEBUG_MODE` — `True` или `False`. Если `True`, бот будет отвечать только в `DEBUG_CHAT_ID`.
 - `USE_CUDA` — `True`/`False` или `1`/`0`. Управляет выбором устройства для модели (если `True`, код попытается использовать CUDA; по умолчанию `False`).
+- `WHISPER_MODEL_CACHE` — путь к кэшу моделей (по умолчанию `./model_cache`).
 
 ## Установка зависимостей
 
-Рекомендуется использовать виртуальное окружение.
+Рекомендуется использовать uv (быстрый менеджер окружений и зависимостей).
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv
+uv pip install -r requirements.txt
 ```
 
 ## Запуск
@@ -39,9 +41,9 @@ pip install -r requirements.txt
 Можно запустить напрямую или через Docker Compose (если настроено):
 
 ```bash
-# Запуск напрямую
+# Запуск напрямую (через uv)
 export $(cat .env | xargs)
-python main.py
+uv run python main.py
 
 # Или с Docker Compose
 docker compose up -d
