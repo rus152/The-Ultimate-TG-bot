@@ -3,7 +3,7 @@
 import os
 import logging
 import time
-from threading import Thread
+from threading import Lock, Thread
 
 import requests
 import telebot
@@ -92,16 +92,33 @@ class VoiceBot:
         self.debug_mode = self.debug_mode.lower() == 'true'
 
         self.chat_manager = ChatManager()
-        self.whisper_server_url = os.getenv(
-            'WHISPER_SERVER_URL', 'http://localhost:3373'
-        ).rstrip('/')
+        server_urls = os.getenv('WHISPER_SERVER_URLS', '')
+        if server_urls.strip():
+            self.whisper_server_urls = [
+                url.strip().rstrip('/')
+                for url in server_urls.split(',')
+                if url.strip().rstrip('/')
+            ]
+        else:
+            server_url = os.getenv(
+                'WHISPER_SERVER_URL', 'http://localhost:3373'
+            ).strip().rstrip('/')
+            self.whisper_server_urls = [server_url] if server_url else []
         self.whisper_timeout = float(os.getenv('WHISPER_SERVER_TIMEOUT', '180'))
+        self.whisper_health_interval = float(os.getenv('WHISPER_HEALTH_INTERVAL', '60'))
+        self.whisper_health_timeout = float(os.getenv('WHISPER_HEALTH_TIMEOUT', '10'))
         self.whisper_language = os.getenv('WHISPER_LANGUAGE', '').strip() or None
-        if not self.whisper_server_url:
-            raise ValueError('WHISPER_SERVER_URL must not be empty')
+        self.whisper_server_lock = Lock()
+        self.active_whisper_server_url = None
+        if not self.whisper_server_urls:
+            raise ValueError('At least one Whisper server URL must be configured')
         if self.whisper_timeout <= 0:
             raise ValueError('WHISPER_SERVER_TIMEOUT must be greater than zero')
-        logging.info(f'Whisper server URL: {self.whisper_server_url}')
+        if self.whisper_health_interval <= 0:
+            raise ValueError('WHISPER_HEALTH_INTERVAL must be greater than zero')
+        if self.whisper_health_timeout <= 0:
+            raise ValueError('WHISPER_HEALTH_TIMEOUT must be greater than zero')
+        logging.info(f'Whisper server URLs: {", ".join(self.whisper_server_urls)}')
         logging.info(f'Whisper language: {self.whisper_language or "auto"}')
 
     def setup(self):
@@ -122,6 +139,7 @@ class VoiceBot:
         logging.info('Bot started')
         threading_list = [
             Thread(target=self.voice_handler, daemon=True),
+            Thread(target=self.whisper_health_monitor, daemon=True),
             #Thread(target=self.queue_manager, daemon=True)
         ]
 
@@ -551,7 +569,6 @@ class VoiceBot:
 
     def transcribe(self, path):
         """Отправляет аудиофайл в whisper-server и возвращает распознанный текст."""
-        endpoint = f'{self.whisper_server_url}/transcribe'
         params = {
             'task': 'transcribe',
             'timeout_seconds': self.whisper_timeout,
@@ -559,41 +576,114 @@ class VoiceBot:
         if self.whisper_language:
             params['language'] = self.whisper_language
 
-        with open(path, 'rb') as audio_file:
-            response = requests.post(
-                endpoint,
-                params=params,
-                files={'file': (os.path.basename(path), audio_file)},
-                timeout=(10, self.whisper_timeout + 5),
-            )
-
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as error:
+        errors = []
+        for server_url in self.ordered_whisper_server_urls():
+            endpoint = f'{server_url}/transcribe'
             try:
-                error_payload = response.json()
+                with open(path, 'rb') as audio_file:
+                    response = requests.post(
+                        endpoint,
+                        params=params,
+                        files={'file': (os.path.basename(path), audio_file)},
+                        timeout=(10, self.whisper_timeout + 5),
+                    )
+            except requests.RequestException as error:
+                failure = f'{server_url}: {error}'
+                errors.append(failure)
+                self.mark_whisper_server_failed(server_url)
+                logging.warning(f'Whisper server request failed, trying fallback: {failure}')
+                continue
+
+            if response.status_code >= 400:
+                try:
+                    error_payload = response.json()
+                except requests.JSONDecodeError:
+                    error_payload = None
+                detail = (
+                    error_payload.get('detail', response.text)
+                    if isinstance(error_payload, dict)
+                    else response.text
+                )
+                failure = f'{server_url}: HTTP {response.status_code}: {detail}'
+                if response.status_code == 429 or response.status_code >= 500:
+                    errors.append(failure)
+                    self.mark_whisper_server_failed(server_url)
+                    logging.warning(
+                        f'Whisper server unavailable, trying fallback: {failure}'
+                    )
+                    continue
+                raise RuntimeError(f'Whisper server returned {failure}')
+
+            try:
+                payload = response.json()
             except requests.JSONDecodeError:
-                error_payload = None
-            detail = (
-                error_payload.get('detail', response.text)
-                if isinstance(error_payload, dict)
-                else response.text
-            )
-            raise RuntimeError(
-                f'Whisper server returned HTTP {response.status_code}: {detail}'
-            ) from error
+                failure = f'{server_url}: invalid JSON response'
+                errors.append(failure)
+                self.mark_whisper_server_failed(server_url)
+                logging.warning(f'Whisper server response failed, trying fallback: {failure}')
+                continue
 
-        try:
-            payload = response.json()
-        except requests.JSONDecodeError as error:
-            raise RuntimeError('Whisper server returned invalid JSON') from error
+            transcription = payload.get('text') if isinstance(payload, dict) else None
+            if not isinstance(transcription, str):
+                failure = f'{server_url}: response does not contain text'
+                errors.append(failure)
+                self.mark_whisper_server_failed(server_url)
+                logging.warning(f'Whisper server response failed, trying fallback: {failure}')
+                continue
+            self.set_active_whisper_server(server_url)
+            return transcription
 
-        if not isinstance(payload, dict):
-            raise RuntimeError('Whisper server returned an invalid response')
-        transcription = payload.get('text')
-        if not isinstance(transcription, str):
-            raise RuntimeError('Whisper server response does not contain text')
-        return transcription
+        raise RuntimeError(f'All Whisper servers failed: {"; ".join(errors)}')
+
+    def ordered_whisper_server_urls(self):
+        """Возвращает активный сервер первым, сохраняя порядок остальных адресов."""
+        with self.whisper_server_lock:
+            active_server = self.active_whisper_server_url
+        if active_server not in self.whisper_server_urls:
+            return list(self.whisper_server_urls)
+        return [active_server] + [
+            url for url in self.whisper_server_urls if url != active_server
+        ]
+
+    def set_active_whisper_server(self, server_url):
+        with self.whisper_server_lock:
+            previous_server = self.active_whisper_server_url
+            self.active_whisper_server_url = server_url
+        if previous_server != server_url:
+            logging.info(f'Active Whisper server: {server_url}')
+
+    def mark_whisper_server_failed(self, server_url):
+        with self.whisper_server_lock:
+            if self.active_whisper_server_url == server_url:
+                self.active_whisper_server_url = None
+                logging.warning(f'Active Whisper server failed: {server_url}')
+
+    def refresh_active_whisper_server(self):
+        """Проверяет серверы по приоритету и запоминает первый здоровый адрес."""
+        for server_url in self.whisper_server_urls:
+            try:
+                response = requests.get(
+                    f'{server_url}/health',
+                    timeout=(3, self.whisper_health_timeout),
+                )
+                payload = response.json() if response.ok else None
+                if isinstance(payload, dict) and payload.get('status') == 'ok':
+                    self.set_active_whisper_server(server_url)
+                    return server_url
+            except (requests.RequestException, requests.JSONDecodeError) as error:
+                logging.debug(f'Whisper health check failed for {server_url}: {error}')
+
+        with self.whisper_server_lock:
+            previous_server = self.active_whisper_server_url
+            self.active_whisper_server_url = None
+        if previous_server is not None:
+            logging.warning('No healthy Whisper servers found')
+        return None
+
+    def whisper_health_monitor(self):
+        while True:
+            self.refresh_active_whisper_server()
+            time.sleep(self.whisper_health_interval)
 
     def split_text(self, text, max_length):
         """Разделяет текст на части, не превышающие max_length символов."""
