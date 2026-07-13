@@ -1,6 +1,4 @@
 # requirements.txt
 
-pydub
 PyTelegramBotAPI
-faster-whisper
-ctranslate2>=4.0.0
+requests>=2.31

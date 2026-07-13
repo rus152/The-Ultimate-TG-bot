@@ -5,10 +5,9 @@ import logging
 import time
 from threading import Thread
 
+import requests
 import telebot
 from telebot.formatting import hcite
-from pydub import AudioSegment
-from faster_whisper import WhisperModel
 
 
 def setup_logging(filename: str) -> None:
@@ -93,41 +92,17 @@ class VoiceBot:
         self.debug_mode = self.debug_mode.lower() == 'true'
 
         self.chat_manager = ChatManager()
-
-        # Загрузка модели с обработкой исключений
-        try:
-            logging.info('Loading Faster-Whisper model...')
-
-            # Определение устройства: используем переменную окружения USE_CUDA или fallback на CPU
-            use_cuda_env = os.getenv('USE_CUDA')
-            if use_cuda_env is not None:
-                use_cuda = use_cuda_env.lower() in ('1', 'true', 'yes')
-                logging.info(f'USE_CUDA env var set: {use_cuda_env} -> use_cuda={use_cuda}')
-            else:
-                use_cuda = False
-                logging.info('USE_CUDA not set, defaulting to CPU (use_cuda=False)')
-
-            device = "cuda" if use_cuda else "cpu"
-            compute_type = "int8" # Устанавливаем тип вычислений в int8
-            model_size = "turbo"
-
-            # Инициализация модели Faster-Whisper
-            # num_workers=1 рекомендуется для стабильности в многопоточных приложениях,
-            # download_root позволяет указать путь для кэширования моделей.
-            model_cache_root = './model_cache'
-            os.makedirs(model_cache_root, exist_ok=True)
-            logging.info(f'Whisper model cache dir: {model_cache_root}')
-            self.model = WhisperModel(
-                model_size_or_path=model_size,
-                device=device,
-                compute_type=compute_type,
-                num_workers=1, # Важно для стабильности с потоками
-                download_root=model_cache_root # Папка для кэша моделей
-            )
-            logging.info('Faster-Whisper Model loaded')
-        except Exception as e:
-            logging.error(f'Error loading Faster-Whisper model: {e}')
-            exit(1)
+        self.whisper_server_url = os.getenv(
+            'WHISPER_SERVER_URL', 'http://localhost:3373'
+        ).rstrip('/')
+        self.whisper_timeout = float(os.getenv('WHISPER_SERVER_TIMEOUT', '180'))
+        self.whisper_language = os.getenv('WHISPER_LANGUAGE', '').strip() or None
+        if not self.whisper_server_url:
+            raise ValueError('WHISPER_SERVER_URL must not be empty')
+        if self.whisper_timeout <= 0:
+            raise ValueError('WHISPER_SERVER_TIMEOUT must be greater than zero')
+        logging.info(f'Whisper server URL: {self.whisper_server_url}')
+        logging.info(f'Whisper language: {self.whisper_language or "auto"}')
 
     def setup(self):
         self.voice_folder = 'voice_messages'
@@ -271,18 +246,11 @@ class VoiceBot:
 
             file_name_video = os.path.join(
                 self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp4")
-            file_name_audio = os.path.join(
-                self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
 
             with open(file_name_video, 'wb') as video_file:
                 video_file.write(downloaded_file)
 
-            audio = AudioSegment.from_file(file_name_video, format="mp4")
-            audio.export(file_name_audio, format="mp3")
-
-            os.remove(file_name_video)
-
-            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
         except Exception as e:
             logging.error(f'Error processing video note: {e}')
             try:
@@ -346,7 +314,7 @@ class VoiceBot:
                 logging.error(f'Failed to delete status message: {de}')
 
     def process_video_message(self, message):
-        """Обрабатывает отправленные видеофайлы: mp4/mov/webm и др., извлекает аудио в mp3."""
+        """Передаёт отправленные видеофайлы в whisper-server без перекодирования."""
         sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
@@ -373,23 +341,11 @@ class VoiceBot:
 
             file_name_video = os.path.join(
                 self.media_folder, f"video_{message.from_user.id}_{message.message_id}{default_video_ext}")
-            file_name_audio = os.path.join(
-                self.media_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
 
             with open(file_name_video, 'wb') as vf:
                 vf.write(downloaded_file)
 
-            try:
-                audio = AudioSegment.from_file(file_name_video)
-                audio.export(file_name_audio, format="mp3")
-            finally:
-                # Удаляем исходное видео независимо от успеха экспорта
-                try:
-                    os.remove(file_name_video)
-                except Exception:
-                    pass
-
-            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
         except Exception as e:
             logging.error(f'Error processing video message: {e}')
             try:
@@ -438,7 +394,7 @@ class VoiceBot:
                 return
 
             if mime_type.startswith('video/') or is_video_ext(ext):
-                # Скачиваем и обрабатываем как видео (извлекаем аудио)
+                # Скачиваем и передаём исходное видео без перекодирования
                 sent_message = self.bot.reply_to(message, 'В очереди...')
                 file_info = self.bot.get_file(doc.file_id)
                 file_path = getattr(file_info, 'file_path', None)
@@ -456,19 +412,9 @@ class VoiceBot:
                 video_ext = ext if is_video_ext(ext) else '.mp4'
                 file_name_video = os.path.join(
                     self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}{video_ext}")
-                file_name_audio = os.path.join(
-                    self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}.mp3")
                 with open(file_name_video, 'wb') as vf:
                     vf.write(downloaded_file)
-                try:
-                    audio = AudioSegment.from_file(file_name_video)
-                    audio.export(file_name_audio, format="mp3")
-                finally:
-                    try:
-                        os.remove(file_name_video)
-                    except Exception:
-                        pass
-                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
                 return
 
             # Тип документа не поддерживается
@@ -495,14 +441,7 @@ class VoiceBot:
                                                    text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
-                        segments, info = self.model.transcribe(
-                            path,
-                            language='ru',
-                            beam_size=5, # Можно настроить для баланса скорости/качества
-                            vad_filter=True # Используем встроенный VAD для лучшей обработки пауз
-                        )
-                        # Собираем весь текст из сегментов
-                        transcription = " ".join([segment.text for segment in segments])
+                        transcription = self.transcribe(path)
                         duration = time.time() - start_time
 
                         # Максимальная длина сообщения и определение типа носителя
@@ -609,6 +548,52 @@ class VoiceBot:
                     time.sleep(1)
             else:
                 time.sleep(1)
+
+    def transcribe(self, path):
+        """Отправляет аудиофайл в whisper-server и возвращает распознанный текст."""
+        endpoint = f'{self.whisper_server_url}/transcribe'
+        params = {
+            'task': 'transcribe',
+            'timeout_seconds': self.whisper_timeout,
+        }
+        if self.whisper_language:
+            params['language'] = self.whisper_language
+
+        with open(path, 'rb') as audio_file:
+            response = requests.post(
+                endpoint,
+                params=params,
+                files={'file': (os.path.basename(path), audio_file)},
+                timeout=(10, self.whisper_timeout + 5),
+            )
+
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as error:
+            try:
+                error_payload = response.json()
+            except requests.JSONDecodeError:
+                error_payload = None
+            detail = (
+                error_payload.get('detail', response.text)
+                if isinstance(error_payload, dict)
+                else response.text
+            )
+            raise RuntimeError(
+                f'Whisper server returned HTTP {response.status_code}: {detail}'
+            ) from error
+
+        try:
+            payload = response.json()
+        except requests.JSONDecodeError as error:
+            raise RuntimeError('Whisper server returned invalid JSON') from error
+
+        if not isinstance(payload, dict):
+            raise RuntimeError('Whisper server returned an invalid response')
+        transcription = payload.get('text')
+        if not isinstance(transcription, str):
+            raise RuntimeError('Whisper server response does not contain text')
+        return transcription
 
     def split_text(self, text, max_length):
         """Разделяет текст на части, не превышающие max_length символов."""
