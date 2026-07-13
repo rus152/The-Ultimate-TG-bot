@@ -24,6 +24,7 @@
 - `DEBUG_MODE` — `True` или `False`. Если `True`, бот будет отвечать только в `DEBUG_CHAT_ID`.
 - `WHISPER_SERVER_URL` — адрес запущенного whisper-server (по умолчанию `http://localhost:3373`).
 - `WHISPER_SERVER_TIMEOUT` — максимальное время распознавания в секундах (по умолчанию `180`).
+- `WHISPER_LANGUAGE` — подсказка языка (`ru`, `en` и т. п.). Если не задана или пуста, Whisper определяет язык автоматически.
 
 Перед запуском бота поднимите [whisper-server](https://github.com/the80hz/whisper-server) и укажите доступный боту URL. Если бот работает в Docker, `localhost` указывает на сам контейнер, поэтому используйте DNS-имя сервиса или адрес хоста.
 

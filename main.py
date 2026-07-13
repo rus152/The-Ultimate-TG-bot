@@ -97,11 +97,13 @@ class VoiceBot:
             'WHISPER_SERVER_URL', 'http://localhost:3373'
         ).rstrip('/')
         self.whisper_timeout = float(os.getenv('WHISPER_SERVER_TIMEOUT', '180'))
+        self.whisper_language = os.getenv('WHISPER_LANGUAGE', '').strip() or None
         if not self.whisper_server_url:
             raise ValueError('WHISPER_SERVER_URL must not be empty')
         if self.whisper_timeout <= 0:
             raise ValueError('WHISPER_SERVER_TIMEOUT must be greater than zero')
         logging.info(f'Whisper server URL: {self.whisper_server_url}')
+        logging.info(f'Whisper language: {self.whisper_language or "auto"}')
 
     def setup(self):
         self.voice_folder = 'voice_messages'
@@ -582,9 +584,10 @@ class VoiceBot:
         endpoint = f'{self.whisper_server_url}/transcribe'
         params = {
             'task': 'transcribe',
-            'language': 'ru',
             'timeout_seconds': self.whisper_timeout,
         }
+        if self.whisper_language:
+            params['language'] = self.whisper_language
 
         with open(path, 'rb') as audio_file:
             response = requests.post(
