@@ -1,5 +1,4 @@
 # requirements.txt
 
-pydub
 PyTelegramBotAPI
 requests>=2.31

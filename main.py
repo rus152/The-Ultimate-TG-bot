@@ -8,7 +8,6 @@ from threading import Thread
 import requests
 import telebot
 from telebot.formatting import hcite
-from pydub import AudioSegment
 
 
 def setup_logging(filename: str) -> None:
@@ -247,18 +246,11 @@ class VoiceBot:
 
             file_name_video = os.path.join(
                 self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp4")
-            file_name_audio = os.path.join(
-                self.video_note_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
 
             with open(file_name_video, 'wb') as video_file:
                 video_file.write(downloaded_file)
 
-            audio = AudioSegment.from_file(file_name_video, format="mp4")
-            audio.export(file_name_audio, format="mp3")
-
-            os.remove(file_name_video)
-
-            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
         except Exception as e:
             logging.error(f'Error processing video note: {e}')
             try:
@@ -322,7 +314,7 @@ class VoiceBot:
                 logging.error(f'Failed to delete status message: {de}')
 
     def process_video_message(self, message):
-        """Обрабатывает отправленные видеофайлы: mp4/mov/webm и др., извлекает аудио в mp3."""
+        """Передаёт отправленные видеофайлы в whisper-server без перекодирования."""
         sent_message = None
         try:
             sent_message = self.bot.reply_to(message, 'В очереди...')
@@ -349,23 +341,11 @@ class VoiceBot:
 
             file_name_video = os.path.join(
                 self.media_folder, f"video_{message.from_user.id}_{message.message_id}{default_video_ext}")
-            file_name_audio = os.path.join(
-                self.media_folder, f"video_{message.from_user.id}_{message.message_id}.mp3")
 
             with open(file_name_video, 'wb') as vf:
                 vf.write(downloaded_file)
 
-            try:
-                audio = AudioSegment.from_file(file_name_video)
-                audio.export(file_name_audio, format="mp3")
-            finally:
-                # Удаляем исходное видео независимо от успеха экспорта
-                try:
-                    os.remove(file_name_video)
-                except Exception:
-                    pass
-
-            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+            self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
         except Exception as e:
             logging.error(f'Error processing video message: {e}')
             try:
@@ -414,7 +394,7 @@ class VoiceBot:
                 return
 
             if mime_type.startswith('video/') or is_video_ext(ext):
-                # Скачиваем и обрабатываем как видео (извлекаем аудио)
+                # Скачиваем и передаём исходное видео без перекодирования
                 sent_message = self.bot.reply_to(message, 'В очереди...')
                 file_info = self.bot.get_file(doc.file_id)
                 file_path = getattr(file_info, 'file_path', None)
@@ -432,19 +412,9 @@ class VoiceBot:
                 video_ext = ext if is_video_ext(ext) else '.mp4'
                 file_name_video = os.path.join(
                     self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}{video_ext}")
-                file_name_audio = os.path.join(
-                    self.media_folder, f"doc_video_{message.from_user.id}_{message.message_id}.mp3")
                 with open(file_name_video, 'wb') as vf:
                     vf.write(downloaded_file)
-                try:
-                    audio = AudioSegment.from_file(file_name_video)
-                    audio.export(file_name_audio, format="mp3")
-                finally:
-                    try:
-                        os.remove(file_name_video)
-                    except Exception:
-                        pass
-                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_audio)
+                self.chat_manager.add_chat(message.chat.id, sent_message.message_id, file_name_video)
                 return
 
             # Тип документа не поддерживается
