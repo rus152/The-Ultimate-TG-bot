@@ -92,18 +92,14 @@ class VoiceBot:
         self.debug_mode = self.debug_mode.lower() == 'true'
 
         self.chat_manager = ChatManager()
-        server_urls = os.getenv('WHISPER_SERVER_URLS', '')
-        if server_urls.strip():
-            self.whisper_server_urls = [
-                url.strip().rstrip('/')
-                for url in server_urls.split(',')
-                if url.strip().rstrip('/')
-            ]
-        else:
-            server_url = os.getenv(
-                'WHISPER_SERVER_URL', 'http://localhost:3373'
-            ).strip().rstrip('/')
-            self.whisper_server_urls = [server_url] if server_url else []
+        server_urls = os.getenv(
+            'WHISPER_SERVER_URLS', 'http://localhost:3373'
+        )
+        self.whisper_server_urls = [
+            url.strip().rstrip('/')
+            for url in server_urls.split(',')
+            if url.strip().rstrip('/')
+        ]
         self.whisper_timeout = float(os.getenv('WHISPER_SERVER_TIMEOUT', '180'))
         self.whisper_health_interval = float(os.getenv('WHISPER_HEALTH_INTERVAL', '60'))
         self.whisper_health_timeout = float(os.getenv('WHISPER_HEALTH_TIMEOUT', '10'))

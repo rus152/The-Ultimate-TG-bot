@@ -22,8 +22,7 @@
 - `TELEGRAM_BOT_TOKEN` — токен Telegram-бота.
 - `DEBUG_CHAT_ID` — id чата для тестирования debug-режима (например, `-1001234567890`).
 - `DEBUG_MODE` — `True` или `False`. Если `True`, бот будет отвечать только в `DEBUG_CHAT_ID`.
-- `WHISPER_SERVER_URL` — адрес запущенного whisper-server (по умолчанию `http://localhost:3373`).
-- `WHISPER_SERVER_URLS` — несколько адресов через запятую в порядке приоритета. Если задано, заменяет `WHISPER_SERVER_URL`; fallback срабатывает при сетевых ошибках, таймаутах, HTTP `429` и `5xx`.
+- `WHISPER_SERVER_URLS` — один или несколько адресов через запятую в порядке приоритета (по умолчанию `http://localhost:3373`). Fallback срабатывает при сетевых ошибках, таймаутах, HTTP `429` и `5xx`.
 - `WHISPER_SERVER_TIMEOUT` — максимальное время распознавания в секундах (по умолчанию `180`).
 - `WHISPER_HEALTH_INTERVAL` — интервал фоновой проверки `/health` в секундах (по умолчанию `60`).
 - `WHISPER_HEALTH_TIMEOUT` — таймаут одной фоновой проверки в секундах (по умолчанию `10`).
