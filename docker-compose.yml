@@ -3,19 +3,10 @@
 services:
   voice_bot:
     container_name: whisper_voice_bot
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     build:
       context: .
       dockerfile: Dockerfile
     image: the80hz/utgb:latest
     env_file:
       - .env
-    volumes:
-      - ${WHISPER_MODEL_CACHE:-./model_cache}:/app/model_cache
     restart: unless-stopped

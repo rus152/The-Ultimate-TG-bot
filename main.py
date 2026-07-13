@@ -5,10 +5,10 @@ import logging
 import time
 from threading import Thread
 
+import requests
 import telebot
 from telebot.formatting import hcite
 from pydub import AudioSegment
-from faster_whisper import WhisperModel
 
 
 def setup_logging(filename: str) -> None:
@@ -93,41 +93,15 @@ class VoiceBot:
         self.debug_mode = self.debug_mode.lower() == 'true'
 
         self.chat_manager = ChatManager()
-
-        # Загрузка модели с обработкой исключений
-        try:
-            logging.info('Loading Faster-Whisper model...')
-
-            # Определение устройства: используем переменную окружения USE_CUDA или fallback на CPU
-            use_cuda_env = os.getenv('USE_CUDA')
-            if use_cuda_env is not None:
-                use_cuda = use_cuda_env.lower() in ('1', 'true', 'yes')
-                logging.info(f'USE_CUDA env var set: {use_cuda_env} -> use_cuda={use_cuda}')
-            else:
-                use_cuda = False
-                logging.info('USE_CUDA not set, defaulting to CPU (use_cuda=False)')
-
-            device = "cuda" if use_cuda else "cpu"
-            compute_type = "int8" # Устанавливаем тип вычислений в int8
-            model_size = "turbo"
-
-            # Инициализация модели Faster-Whisper
-            # num_workers=1 рекомендуется для стабильности в многопоточных приложениях,
-            # download_root позволяет указать путь для кэширования моделей.
-            model_cache_root = './model_cache'
-            os.makedirs(model_cache_root, exist_ok=True)
-            logging.info(f'Whisper model cache dir: {model_cache_root}')
-            self.model = WhisperModel(
-                model_size_or_path=model_size,
-                device=device,
-                compute_type=compute_type,
-                num_workers=1, # Важно для стабильности с потоками
-                download_root=model_cache_root # Папка для кэша моделей
-            )
-            logging.info('Faster-Whisper Model loaded')
-        except Exception as e:
-            logging.error(f'Error loading Faster-Whisper model: {e}')
-            exit(1)
+        self.whisper_server_url = os.getenv(
+            'WHISPER_SERVER_URL', 'http://localhost:3373'
+        ).rstrip('/')
+        self.whisper_timeout = float(os.getenv('WHISPER_SERVER_TIMEOUT', '180'))
+        if not self.whisper_server_url:
+            raise ValueError('WHISPER_SERVER_URL must not be empty')
+        if self.whisper_timeout <= 0:
+            raise ValueError('WHISPER_SERVER_TIMEOUT must be greater than zero')
+        logging.info(f'Whisper server URL: {self.whisper_server_url}')
 
     def setup(self):
         self.voice_folder = 'voice_messages'
@@ -495,14 +469,7 @@ class VoiceBot:
                                                    text="Распознавание...", parse_mode='HTML')
 
                         start_time = time.time()
-                        segments, info = self.model.transcribe(
-                            path,
-                            language='ru',
-                            beam_size=5, # Можно настроить для баланса скорости/качества
-                            vad_filter=True # Используем встроенный VAD для лучшей обработки пауз
-                        )
-                        # Собираем весь текст из сегментов
-                        transcription = " ".join([segment.text for segment in segments])
+                        transcription = self.transcribe(path)
                         duration = time.time() - start_time
 
                         # Максимальная длина сообщения и определение типа носителя
@@ -609,6 +576,51 @@ class VoiceBot:
                     time.sleep(1)
             else:
                 time.sleep(1)
+
+    def transcribe(self, path):
+        """Отправляет аудиофайл в whisper-server и возвращает распознанный текст."""
+        endpoint = f'{self.whisper_server_url}/transcribe'
+        params = {
+            'task': 'transcribe',
+            'language': 'ru',
+            'timeout_seconds': self.whisper_timeout,
+        }
+
+        with open(path, 'rb') as audio_file:
+            response = requests.post(
+                endpoint,
+                params=params,
+                files={'file': (os.path.basename(path), audio_file)},
+                timeout=(10, self.whisper_timeout + 5),
+            )
+
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as error:
+            try:
+                error_payload = response.json()
+            except requests.JSONDecodeError:
+                error_payload = None
+            detail = (
+                error_payload.get('detail', response.text)
+                if isinstance(error_payload, dict)
+                else response.text
+            )
+            raise RuntimeError(
+                f'Whisper server returned HTTP {response.status_code}: {detail}'
+            ) from error
+
+        try:
+            payload = response.json()
+        except requests.JSONDecodeError as error:
+            raise RuntimeError('Whisper server returned invalid JSON') from error
+
+        if not isinstance(payload, dict):
+            raise RuntimeError('Whisper server returned an invalid response')
+        transcription = payload.get('text')
+        if not isinstance(transcription, str):
+            raise RuntimeError('Whisper server response does not contain text')
+        return transcription
 
     def split_text(self, text, max_length):
         """Разделяет текст на части, не превышающие max_length символов."""
